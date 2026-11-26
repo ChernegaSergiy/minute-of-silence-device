@@ -4,6 +4,7 @@
 extern crate alloc;
 
 mod audio;
+mod button;
 mod led;
 mod scheduler;
 mod sntp;
@@ -31,6 +32,7 @@ async fn main(spawner: Spawner) -> ! {
 
     let rtc = Rtc::new(peripherals.RTC_TIMER);
     let mut status_led = led::StatusLed::new(peripherals.GPIO2);
+    let mut test_button = button::Button::new(peripherals.GPIO0);
     status_led.on();
 
     println!("Initializing Minute of Silence device...");
@@ -57,17 +59,24 @@ async fn main(spawner: Spawner) -> ! {
     let mut daily_scheduler = scheduler::DailyScheduler::new();
     let audio_player = audio::AudioPlayer::new(26, 25, 22);
 
-    println!("Scheduler active. Monitoring daily trigger at 09:00:00 (Kyiv time)...");
+    println!("Scheduler active. Monitoring 09:00:00 trigger or GPIO 0 button press...");
 
     loop {
         let current_epoch_secs = rtc.current_time_us() / 1_000_000;
-        if daily_scheduler.should_trigger(current_epoch_secs, &settings) {
-            println!("Starting daily Minute of Silence ceremony...");
+        let scheduled = daily_scheduler.should_trigger(current_epoch_secs, &settings);
+        let manual_test = test_button.is_clicked();
+
+        if scheduled || manual_test {
+            if manual_test {
+                println!("Manual test triggered via hardware button!");
+            } else {
+                println!("Starting daily Minute of Silence ceremony...");
+            }
             status_led.toggle();
             audio_player.play_ceremony(&settings).await;
             status_led.on();
         }
 
-        Timer::after(Duration::from_millis(500)).await;
+        Timer::after(Duration::from_millis(100)).await;
     }
 }
