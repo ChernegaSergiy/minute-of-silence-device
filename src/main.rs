@@ -3,6 +3,7 @@
 
 extern crate alloc;
 
+mod scheduler;
 mod sntp;
 mod wifi;
 
@@ -49,7 +50,15 @@ async fn main(spawner: Spawner) -> ! {
 
     sntp::synchronize_time(&stack, &rtc, settings.ntp_server.as_str()).await;
 
+    let mut daily_scheduler = scheduler::DailyScheduler::new();
+    println!("Scheduler active. Monitoring daily trigger at 09:00:00 (Kyiv time)...");
+
     loop {
-        Timer::after(Duration::from_secs(60)).await;
+        let current_epoch_secs = rtc.current_time_us() / 1_000_000;
+        if daily_scheduler.should_trigger(current_epoch_secs, &settings) {
+            println!("Starting daily Minute of Silence ceremony...");
+        }
+
+        Timer::after(Duration::from_millis(500)).await;
     }
 }
