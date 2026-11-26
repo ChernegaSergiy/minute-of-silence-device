@@ -45,6 +45,16 @@ Ensure your shell environment is initialized with the ESP toolchain:
 source ~/export-esp.sh
 ```
 
+### Wi-Fi Configuration
+
+Configure network credentials at compile time via environment variables:
+
+```bash
+WIFI_SSID="YourNetworkName" WIFI_PASS="YourPassword" cargo build --release
+```
+
+If omitted, the firmware defaults to searching for an open access point named `MinuteOfSilence`.
+
 ### Building and Flashing
 
 Build the firmware binary:
