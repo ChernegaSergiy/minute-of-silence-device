@@ -57,10 +57,6 @@ Flash the device and open the serial monitor:
 cargo espflash flash --monitor
 ```
 
-## Related Projects
-
-- [minute-of-silence](https://github.com/ChernegaSergiy/minute-of-silence) — The desktop application (Tauri 2 + React + Rust).
-
 ## License
 
 Licensed under the CSSM Unlimited License v2.0. See [LICENSE](LICENSE) for details.
