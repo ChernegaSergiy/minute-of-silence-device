@@ -4,7 +4,20 @@ use embassy_net::{Runner, Stack, StackResources};
 use embassy_time::{Duration, Timer};
 use esp_hal::rng::Rng;
 use esp_println::println;
-use esp_radio::wifi::{Config, ControllerConfig, Interface, WifiController, sta::StationConfig};
+use esp_radio::wifi::{
+    AuthenticationMethodConfig, Config, ControllerConfig, Interface, WifiController,
+    sta::StationConfig,
+};
+
+const DEFAULT_SSID: &str = match option_env!("WIFI_SSID") {
+    Some(val) => val,
+    None => "MinuteOfSilence",
+};
+
+const DEFAULT_PASSWORD: &str = match option_env!("WIFI_PASS") {
+    Some(val) => val,
+    None => "",
+};
 
 #[embassy_executor::task]
 pub async fn connection_task(mut controller: WifiController<'static>) {
@@ -33,11 +46,23 @@ pub fn init_wifi(
     wifi_peripheral: esp_hal::peripherals::WIFI<'static>,
     spawner: &Spawner,
 ) -> Stack<'static> {
-    let station_config = Config::Station(StationConfig::default());
+    let mut station_config = StationConfig::default();
+
+    if let Ok(ssid) = DEFAULT_SSID.try_into() {
+        station_config = station_config.with_ssid(ssid);
+    }
+
+    if !DEFAULT_PASSWORD.is_empty() {
+        if let Ok(pass) = DEFAULT_PASSWORD.try_into() {
+            station_config =
+                station_config.with_authentication(AuthenticationMethodConfig::Wpa2Personal(pass));
+        }
+    }
+
     let wifi_interface = esp_radio::wifi::Interface::station();
     let controller = esp_radio::wifi::WifiController::new(
         wifi_peripheral,
-        ControllerConfig::default().with_initial_config(station_config),
+        ControllerConfig::default().with_initial_config(Config::Station(station_config)),
     )
     .unwrap();
 
