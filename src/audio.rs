@@ -1,5 +1,6 @@
 use embassy_time::{Duration, Timer};
 use esp_println::println;
+use khvylyna_core::voices::{VoiceAssets, effective_blocks};
 use khvylyna_core::{PresetBlock, Settings};
 
 /// Precomputed quarter-wave sine lookup table (64 entries, 16-bit amplitude).
@@ -60,14 +61,25 @@ impl AudioPlayer {
         }
     }
 
-    /// Plays an individual ceremony block according to configuration.
-    pub async fn play_block(&self, block: &PresetBlock, _settings: &Settings) {
+    /// Plays an individual ceremony block according to configuration and core voice manifest.
+    pub async fn play_block(&self, block: &PresetBlock, settings: &Settings) {
+        let durations = VoiceAssets::for_voice(settings.announcement_voice).durations;
         match block {
             PresetBlock::Announcement => {
-                println!("[Audio] Playing memorial announcement block...");
-                Timer::after(Duration::from_secs(5)).await;
+                println!(
+                    "[Audio] Playing memorial announcement block ({:.2}s)...",
+                    durations.announcement.as_secs_f32()
+                );
+                Timer::after(Duration::from_micros(
+                    durations.announcement.as_micros() as u64
+                ))
+                .await;
             }
             PresetBlock::Bell => {
+                println!(
+                    "[Audio] Playing memorial bell block ({:.2}s)...",
+                    durations.bell.as_secs_f32()
+                );
                 self.play_bell_strikes().await;
             }
             PresetBlock::Metronome => {
@@ -78,12 +90,18 @@ impl AudioPlayer {
                 Timer::after(Duration::from_secs(60)).await;
             }
             PresetBlock::Ending => {
-                println!("[Audio] Playing memorial closing recording...");
-                Timer::after(Duration::from_secs(5)).await;
+                let ending_dur = durations
+                    .ending
+                    .unwrap_or(core::time::Duration::from_secs(4));
+                println!(
+                    "[Audio] Playing memorial closing recording ({:.2}s)...",
+                    ending_dur.as_secs_f32()
+                );
+                Timer::after(Duration::from_micros(ending_dur.as_micros() as u64)).await;
             }
             PresetBlock::Anthem => {
-                println!("[Audio] Playing state anthem block...");
-                Timer::after(Duration::from_secs(90)).await;
+                println!("[Audio] Playing state anthem block (104s)...");
+                Timer::after(Duration::from_secs(104)).await;
             }
         }
     }
@@ -95,7 +113,8 @@ impl AudioPlayer {
             self.pin_bclk, self.pin_ws, self.pin_din
         );
 
-        for block in &settings.blocks {
+        let blocks = effective_blocks(&settings.blocks, settings.announcement_voice);
+        for block in &blocks {
             self.play_block(block, settings).await;
         }
 
