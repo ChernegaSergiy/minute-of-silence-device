@@ -1,4 +1,3 @@
-use esp_hal::rtc_cntl::Rtc;
 use esp_println::println;
 use khvylyna_core::Settings;
 
@@ -120,8 +119,7 @@ impl DailyScheduler {
         let is_exact_09_00 = local.hour == 9 && local.minute == 0 && local.second == 0;
 
         // Grace period check for late device power-on
-        let is_within_grace =
-            local.hour == 9 && (local.minute as u32) < settings.late_start_grace_minutes;
+        let is_within_grace = local.hour == 9 && local.minute < settings.late_start_grace_minutes;
 
         if is_exact_09_00 || is_within_grace {
             self.last_ceremony_day = Some(local.day);
