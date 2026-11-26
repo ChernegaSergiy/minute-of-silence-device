@@ -5,11 +5,11 @@ extern crate alloc;
 
 use esp_alloc::heap_allocator;
 use esp_backtrace as _;
-use esp_hal::entry;
+use esp_hal::main;
 use esp_println::println;
 use khvylyna_core::Settings;
 
-#[entry]
+#[main]
 fn main() -> ! {
     // Initialize 64 KB heap for alloc (Vec, String)
     heap_allocator!(size: 64 * 1024);
