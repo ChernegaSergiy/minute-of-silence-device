@@ -1,6 +1,6 @@
 use embassy_time::{Duration, Timer};
 use esp_println::println;
-use khvylyna_core::{CeremonyBlock, Settings};
+use khvylyna_core::{PresetBlock, Settings};
 
 /// Hardware audio interface controller for MAX98357A I2S DAC amplifier.
 pub struct AudioPlayer {
@@ -20,25 +20,29 @@ impl AudioPlayer {
     }
 
     /// Plays an individual ceremony block according to configuration.
-    pub async fn play_block(&self, block: &CeremonyBlock, _settings: &Settings) {
+    pub async fn play_block(&self, block: &PresetBlock, _settings: &Settings) {
         match block {
-            CeremonyBlock::Announcement => {
+            PresetBlock::Announcement => {
                 println!("[Audio] Playing memorial announcement block...");
                 Timer::after(Duration::from_secs(5)).await;
             }
-            CeremonyBlock::Metronome => {
-                println!("[Audio] Playing metronome ticking cadence...");
-                Timer::after(Duration::from_secs(60)).await;
-            }
-            CeremonyBlock::Silence => {
-                println!("[Audio] Observed national moment of silence...");
-                Timer::after(Duration::from_secs(60)).await;
-            }
-            CeremonyBlock::Bell => {
+            PresetBlock::Bell => {
                 println!("[Audio] Playing memorial bell cadence...");
                 Timer::after(Duration::from_secs(10)).await;
             }
-            CeremonyBlock::Anthem => {
+            PresetBlock::Metronome => {
+                println!("[Audio] Playing metronome ticking cadence...");
+                Timer::after(Duration::from_secs(60)).await;
+            }
+            PresetBlock::Silence => {
+                println!("[Audio] Observed national moment of silence...");
+                Timer::after(Duration::from_secs(60)).await;
+            }
+            PresetBlock::Ending => {
+                println!("[Audio] Playing memorial closing recording...");
+                Timer::after(Duration::from_secs(5)).await;
+            }
+            PresetBlock::Anthem => {
                 println!("[Audio] Playing state anthem block...");
                 Timer::after(Duration::from_secs(90)).await;
             }
