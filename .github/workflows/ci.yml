@@ -22,6 +22,8 @@ jobs:
         with:
           default: true
           buildtargets: esp32
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check code formatting
         run: cargo fmt --all -- --check
