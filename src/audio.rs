@@ -1,7 +1,31 @@
 use embassy_time::{Duration, Timer};
+use esp_hal::gpio::{Level, Output, OutputConfig, OutputPin};
 use esp_println::println;
 use khvylyna_core::voices::{VoiceAssets, effective_blocks};
 use khvylyna_core::{PresetBlock, Settings};
+
+/// Amplifier enable / mute controller (active-high: GPIO 4 for relay or SD/MUTE).
+pub struct AmpControl<'d> {
+    output: Output<'d>,
+}
+
+impl<'d> AmpControl<'d> {
+    /// Initializes amplifier control on the given pin (starts disabled/muted).
+    pub fn new(pin: impl OutputPin + 'd) -> Self {
+        let output = Output::new(pin, Level::Low, OutputConfig::default());
+        Self { output }
+    }
+
+    /// Powers on the amplifier or unmutes audio output.
+    pub fn enable(&mut self) {
+        self.output.set_high();
+    }
+
+    /// Powers off the amplifier or mutes audio output.
+    pub fn disable(&mut self) {
+        self.output.set_low();
+    }
+}
 
 /// Precomputed quarter-wave sine lookup table (64 entries, 16-bit amplitude).
 const SINE_QUARTER: [i16; 64] = [

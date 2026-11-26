@@ -34,6 +34,7 @@ async fn main(spawner: Spawner) -> ! {
     let rtc = Rtc::new(peripherals.RTC_TIMER);
     let mut status_led = led::StatusLed::new(peripherals.GPIO2);
     let mut test_button = button::Button::new(peripherals.GPIO0);
+    let mut amp_control = audio::AmpControl::new(peripherals.GPIO4);
     status_led.on();
 
     println!("Initializing Minute of Silence device...");
@@ -77,7 +78,13 @@ async fn main(spawner: Spawner) -> ! {
                 println!("Starting daily Minute of Silence ceremony...");
             }
             status_led.toggle();
+            amp_control.enable();
+            Timer::after(Duration::from_millis(200)).await;
+
             audio_player.play_ceremony(&settings).await;
+
+            Timer::after(Duration::from_millis(500)).await;
+            amp_control.disable();
             status_led.on();
         }
 
