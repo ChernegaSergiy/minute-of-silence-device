@@ -47,7 +47,7 @@ async fn main(spawner: Spawner) -> ! {
     let peripherals = esp_hal::init(config);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    esp_rtos::start(timg0.timer0);
+    esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
     println!("Initializing Minute of Silence device...");
 
@@ -76,8 +76,8 @@ async fn main(spawner: Spawner) -> ! {
     let stack_resources = Box::leak(Box::new(StackResources::<4>::new()));
     let (stack, runner) = embassy_net::new(wifi_interface, net_config, stack_resources, seed);
 
-    spawner.spawn(connection_task(controller)).ok();
-    spawner.spawn(net_task(runner)).ok();
+    spawner.spawn(connection_task(controller).unwrap());
+    spawner.spawn(net_task(runner).unwrap());
 
     println!("Waiting for network IP assignment...");
     stack.wait_config_up().await;
