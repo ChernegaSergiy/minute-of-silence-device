@@ -14,17 +14,20 @@ The firmware reuses the core domain logic and data contracts directly from [khvy
 | Component | Recommendation | Description |
 |---|---|---|
 | **MCU** | ESP32-WROOM-32 | Dual-core Xtensa LX6, 4 MB Flash |
-| **Audio DAC / Amp** | MAX98357A | 3.2 W Class D mono I2S amplifier |
-| **Speaker** | 4–8 Ω, 3 W | 40 mm or 50 mm full-range driver |
+| **Audio DAC / Amp** | MAX98357A / PCM5102A | Modular I2S audio interface (compact amp or line-out DAC) |
+| **Speaker** | 4–8 Ω, 3 W / PA Horn | 40–50 mm full-range driver or outdoor horn loudspeaker |
 | **Status LED** | On-board / External LED | Active-high status indicator |
 | **Test Button** | Tactile switch / BOOT button | Active-low button with internal pull-up |
-| **Power** | 5 V USB | Standard Micro-USB or USB-C power supply |
+| **Amp Control** | External relay / MUTE pin | Active-high power/mute control for external amplifiers |
+| **Power** | 5 V USB / 12–24 V DC | 5 V Micro-USB / USB-C, or 12–24 V DC with buck converter |
 
 ### Wiring
 
-#### I2S Audio (MAX98357A)
+#### I2S Audio Bus
 
-| MAX98357A Pin | ESP32 GPIO | Function |
+The I2S interface uses the standard Philips format across all audio profiles:
+
+| Audio Pin | ESP32 GPIO | Function |
 |---|---|---|
 | `LRC` / `WS` | `GPIO 25` | Word Select (Left/Right clock) |
 | `BCLK` | `GPIO 26` | Bit Clock |
@@ -38,6 +41,20 @@ The firmware reuses the core domain logic and data contracts directly from [khvy
 |---|---|---|---|
 | **Status LED** | `GPIO 2` | Output (Active-high) | Illuminates upon boot and blinks during ceremony |
 | **Test Button** | `GPIO 0` | Input (Pull-up, active-low) | Triggers on-demand memorial ceremony for testing (BOOT button) |
+| **Amp Control** | `GPIO 4` | Output (Active-high) | Powers on amplifier / unmutes 200 ms before ceremony to eliminate idle hiss |
+
+## Audio Output Profiles
+
+Because the firmware outputs standard I2S digital audio, the hardware easily adapts from individual desktop memorials to public village squares without modifying the code:
+
+| Profile | Output Hardware | Power Source | Use Case |
+|---|---|---|---|
+| **1. Desktop / Compact** | `MAX98357A` + 3–5 W speaker (4–8 Ω) | 5 V USB | Classrooms, offices, government desks, private rooms |
+| **2. PA Integration (Line-Out)** | `PCM5102A` (I2S DAC with 3.5 mm / RCA) | 5 V USB | Connects via AUX to existing public address racks in community centers or schools |
+| **3. Outdoor High-Power** | `PCM5102A` + `TPA3116D2` (50–100 W) + IP65 Horn | 12–24 V DC (with 5 V buck) | Village squares, schoolyards, memorials, open streets |
+
+> [!TIP]
+> **Modular Connector Recommendation:** Bring the 6 pins (`5V`, `GND`, `GPIO 25`, `GPIO 26`, `GPIO 22`, `GPIO 4`) out to a standardized JST-XH or screw terminal connector. This allows swapping between the compact MAX98357A module, a line-out DAC, or a high-power outdoor relay stage in seconds.
 
 ## Project Structure
 
