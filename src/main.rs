@@ -4,6 +4,7 @@
 extern crate alloc;
 
 mod audio;
+mod led;
 mod scheduler;
 mod sntp;
 mod wifi;
@@ -29,6 +30,8 @@ async fn main(spawner: Spawner) -> ! {
     esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
     let rtc = Rtc::new(peripherals.RTC_TIMER);
+    let mut status_led = led::StatusLed::new(peripherals.GPIO2);
+    status_led.on();
 
     println!("Initializing Minute of Silence device...");
 
@@ -60,7 +63,9 @@ async fn main(spawner: Spawner) -> ! {
         let current_epoch_secs = rtc.current_time_us() / 1_000_000;
         if daily_scheduler.should_trigger(current_epoch_secs, &settings) {
             println!("Starting daily Minute of Silence ceremony...");
+            status_led.toggle();
             audio_player.play_ceremony(&settings).await;
+            status_led.on();
         }
 
         Timer::after(Duration::from_millis(500)).await;
