@@ -1,4 +1,6 @@
 use esp_println::println;
+use khvylyna_core::scheduler::should_trigger_ceremony;
+use khvylyna_core::voices::VoiceDurations;
 use khvylyna_core::Settings;
 
 /// Represents calendar date and time.
@@ -102,34 +104,38 @@ impl DailyScheduler {
         }
     }
 
-    /// Checks if ceremony should trigger at this moment according to settings.
-    pub fn should_trigger(&mut self, epoch_secs: u64, settings: &Settings) -> bool {
-        if !settings.ceremony_enabled {
-            return false;
-        }
-
+    /// Checks if ceremony should trigger at this moment according to settings and voice durations.
+    pub fn should_trigger(
+        &mut self,
+        epoch_secs: u64,
+        settings: &Settings,
+        voice_durations: &VoiceDurations,
+    ) -> bool {
         let local = ukraine_local_time(epoch_secs);
+        let dow = day_of_week(local.year, local.month, local.day);
+        let weekday_mon_to_sun = if dow == 0 { 7 } else { dow };
 
-        // Don't trigger if already ran today
-        if self.last_ceremony_day == Some(local.day) {
-            return false;
-        }
+        let already_activated = self.last_ceremony_day == Some(local.day);
 
-        // Exactly at 09:00:00
-        let is_exact_09_00 = local.hour == 9 && local.minute == 0 && local.second == 0;
+        let trigger = should_trigger_ceremony(
+            local.hour,
+            local.minute,
+            local.second,
+            weekday_mon_to_sun,
+            settings,
+            already_activated,
+            voice_durations,
+        );
 
-        // Grace period check for late device power-on
-        let is_within_grace = local.hour == 9 && local.minute < settings.late_start_grace_minutes;
-
-        if is_exact_09_00 || is_within_grace {
+        if trigger {
             self.last_ceremony_day = Some(local.day);
             println!(
                 "Ceremony triggered for date: {:04}-{:02}-{:02} at {:02}:{:02}:{:02}",
                 local.year, local.month, local.day, local.hour, local.minute, local.second
             );
-            return true;
+            true
+        } else {
+            false
         }
-
-        false
     }
 }

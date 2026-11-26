@@ -18,6 +18,7 @@ use esp_hal::main;
 use esp_hal::rtc_cntl::Rtc;
 use esp_hal::timer::timg::TimerGroup;
 use esp_println::println;
+use khvylyna_core::voices::VoiceAssets;
 use khvylyna_core::Settings;
 
 #[main]
@@ -61,9 +62,12 @@ async fn main(spawner: Spawner) -> ! {
 
     println!("Scheduler active. Monitoring 09:00:00 trigger or GPIO 0 button press...");
 
+    let voice_durations = VoiceAssets::durations_for(settings.announcement_voice);
+
     loop {
         let current_epoch_secs = rtc.current_time_us() / 1_000_000;
-        let scheduled = daily_scheduler.should_trigger(current_epoch_secs, &settings);
+        let scheduled =
+            daily_scheduler.should_trigger(current_epoch_secs, &settings, &voice_durations);
         let manual_test = test_button.is_clicked();
 
         if scheduled || manual_test {
