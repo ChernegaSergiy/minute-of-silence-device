@@ -59,4 +59,4 @@ cargo espflash flash --monitor
 
 ## License
 
-Licensed under the CSSM Unlimited License v2.0. See [LICENSE](LICENSE) for details.
+This project is licensed under the CSSM Unlimited License v2.0 (CSSM-ULv2). See the [LICENSE](LICENSE) file for details.
