@@ -18,8 +18,8 @@ use esp_hal::main;
 use esp_hal::rtc_cntl::Rtc;
 use esp_hal::timer::timg::TimerGroup;
 use esp_println::println;
-use khvylyna_core::voices::VoiceAssets;
 use khvylyna_core::Settings;
+use khvylyna_core::voices::VoiceAssets;
 
 #[main]
 async fn main(spawner: Spawner) -> ! {

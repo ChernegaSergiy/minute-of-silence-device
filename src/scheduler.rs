@@ -1,7 +1,7 @@
 use esp_println::println;
+use khvylyna_core::Settings;
 use khvylyna_core::scheduler::should_trigger_ceremony;
 use khvylyna_core::voices::VoiceDurations;
-use khvylyna_core::Settings;
 
 /// Represents calendar date and time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
