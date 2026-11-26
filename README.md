@@ -54,7 +54,7 @@ Because the firmware outputs standard I2S digital audio, the hardware easily ada
 | **3. Outdoor High-Power** | `PCM5102A` + `TPA3116D2` (50–100 W) + IP65 Horn | 12–24 V DC (with 5 V buck) | Village squares, schoolyards, memorials, open streets |
 
 > [!TIP]
-> **Modular Connector Recommendation:** Bring the 6 pins (`5V`, `GND`, `GPIO 25`, `GPIO 26`, `GPIO 22`, `GPIO 4`) out to a standardized JST-XH or screw terminal connector. This allows swapping between the compact MAX98357A module, a line-out DAC, or a high-power outdoor relay stage in seconds.
+> Route the six audio and control lines (`5V`, `GND`, `GPIO 25`, `GPIO 26`, `GPIO 22`, and `GPIO 4`) to a dedicated pin header, JST-XH receptacle, or screw terminal block to swap between output stages without modifying the controller board.
 
 ## Project Structure
 
