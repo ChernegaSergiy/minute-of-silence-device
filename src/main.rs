@@ -62,12 +62,12 @@ async fn main(spawner: Spawner) -> ! {
 
     println!("Scheduler active. Monitoring 09:00:00 trigger or GPIO 0 button press...");
 
-    let voice_durations = VoiceAssets::durations_for(settings.announcement_voice);
+    let voice_assets = VoiceAssets::for_voice(settings.announcement_voice);
 
     loop {
         let current_epoch_secs = rtc.current_time_us() / 1_000_000;
         let scheduled =
-            daily_scheduler.should_trigger(current_epoch_secs, &settings, &voice_durations);
+            daily_scheduler.should_trigger(current_epoch_secs, &settings, &voice_assets.durations);
         let manual_test = test_button.is_clicked();
 
         if scheduled || manual_test {
