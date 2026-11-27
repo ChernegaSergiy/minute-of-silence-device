@@ -14,6 +14,7 @@ The firmware reuses the core domain logic and data contracts directly from [khvy
 | Component | Recommendation | Description |
 |---|---|---|
 | **MCU** | ESP32-WROOM-32 | Dual-core Xtensa LX6, 4 MB Flash |
+| **Audio Storage** | MicroSD Card Module (SPI) | FAT32 formatted card with uncompressed WAV audio blocks |
 | **Audio DAC / Amp** | MAX98357A / PCM5102A | Modular I2S audio interface (compact amp or line-out DAC) |
 | **Speaker** | 4–8 Ω, 3 W / PA Horn | 40–50 mm full-range driver or outdoor horn loudspeaker |
 | **Status LED** | On-board / External LED | Active-high status indicator |
@@ -34,6 +35,19 @@ The I2S interface uses the standard Philips format across all audio profiles:
 | `DIN` | `GPIO 22` | Digital Audio Data In |
 | `GND` | `GND` | Ground |
 | `VIN` | `5V` / `VBUS` | Power supply (5 V recommended) |
+
+#### MicroSD Card Bus (SPI)
+
+The MicroSD module connects over standard hardware SPI (`SPI2` / HSPI):
+
+| MicroSD Pin | ESP32 GPIO | Function |
+|---|---|---|
+| `CS` | `GPIO 5` | Chip Select (Active-low) |
+| `SCK` / `CLK` | `GPIO 18` | SPI Bus Clock |
+| `MISO` / `DO` | `GPIO 19` | SPI Master In / Slave Out |
+| `MOSI` / `DI` | `GPIO 23` | SPI Master Out / Slave In |
+| `VCC` | `3.3V` / `5V` | Module power supply |
+| `GND` | `GND` | Ground |
 
 #### Status LED and Controls
 
