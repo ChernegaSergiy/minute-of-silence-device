@@ -7,15 +7,20 @@ mod audio;
 mod button;
 mod led;
 mod scheduler;
+mod sdcard;
 mod sntp;
 mod wifi;
 
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
+use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_alloc::heap_allocator;
 use esp_backtrace as _;
+use esp_hal::delay::Delay;
+use esp_hal::gpio::{Level, Output, OutputConfig};
 use esp_hal::main;
 use esp_hal::rtc_cntl::Rtc;
+use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::timer::timg::TimerGroup;
 use esp_println::println;
 use khvylyna_core::Settings;
@@ -38,6 +43,40 @@ async fn main(spawner: Spawner) -> ! {
     status_led.on();
 
     println!("Initializing Minute of Silence device...");
+
+    // MicroSD Card initialization over SPI (SCK: GPIO 18, MISO: GPIO 19, MOSI: GPIO 23, CS: GPIO 5)
+    let spi_bus = match Spi::new(peripherals.SPI2, SpiConfig::default()) {
+        Ok(spi) => Some(
+            spi.with_sck(peripherals.GPIO18)
+                .with_mosi(peripherals.GPIO23)
+                .with_miso(peripherals.GPIO19),
+        ),
+        Err(_) => {
+            println!("[SPI] Failed to configure SPI2 master bus");
+            None
+        }
+    };
+
+    let sd_cs = Output::new(peripherals.GPIO5, Level::High, OutputConfig::default());
+    let delay = Delay::new();
+
+    let _sd_storage = if let Some(spi) = spi_bus {
+        match ExclusiveDevice::new(spi, sd_cs, delay) {
+            Ok(spi_device) => match sdcard::SdCardStorage::new(spi_device, delay) {
+                Ok(storage) => Some(storage),
+                Err(err) => {
+                    println!("[SD] MicroSD initialization skipped: {}", err);
+                    None
+                }
+            },
+            Err(_) => {
+                println!("[SD] Failed to create exclusive SPI device for MicroSD");
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     let mut settings = Settings::default();
     settings.migrate();
