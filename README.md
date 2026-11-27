@@ -5,7 +5,7 @@
 [![CI](https://github.com/ChernegaSergiy/minute-of-silence-device/actions/workflows/ci.yml/badge.svg)](https://github.com/ChernegaSergiy/minute-of-silence-device/actions)
 [![License: CSSM Unlimited License v2.0](https://img.shields.io/badge/License-CSSM%20Unlimited%20License%20v2.0-blue.svg?logo=opensourceinitiative)](LICENSE)
 
-**Minute of Silence Device** is an autonomous IoT device built with bare-metal Rust (`no_std`) for the **ESP32-WROOM-32** microcontroller. It accurately triggers the daily memorial ceremony at 09:00 using NTP time synchronization, playing audio announcements, metronome, and bell through an I2S digital audio interface.
+**Minute of Silence Device** is an autonomous IoT device built with bare-metal Rust (`no_std`) for the **ESP32-WROOM-32** microcontroller. It schedules the daily memorial ceremony for 09:00 using NTP time synchronization and can output supported audio files through an external I2S DAC. Physical audio playback has not yet been verified with a DAC and speaker.
 
 The firmware reuses the core domain logic and data contracts directly from [khvylyna-core](https://github.com/ChernegaSergiy/minute-of-silence/tree/main/crates/khvylyna-core), sharing the exact same ceremony configuration, block sequencing, and validation rules as the desktop application.
 
@@ -59,7 +59,7 @@ The MicroSD module connects over standard hardware SPI (`SPI2` / HSPI):
 
 ## Audio Output Profiles
 
-Because the firmware outputs standard I2S digital audio, the hardware easily adapts from individual desktop memorials to public village squares without modifying the code:
+The firmware outputs I2S digital audio for an external DAC. The following hardware profiles are possible configurations, not hardware-verified setups:
 
 | Profile | Output Hardware | Power Source | Use Case |
 |---|---|---|---|
@@ -79,16 +79,21 @@ minute-of-silence-device/
 |   +-- workflows/ci.yml          # GitHub Actions bare-metal firmware build workflow
 |   \-- FUNDING.yml               # Project sponsorship information
 +-- src/
-|   +-- audio.rs                  # Audio cadence synthesis (metronome, bells) & I2S interface
+|   +-- audio.rs                  # Ceremony block playback and audio sink
+|   +-- audio_timing.rs           # Pause before the metronome
 |   +-- button.rs                 # Active-low hardware button driver (GPIO 0 / BOOT)
 |   +-- flash_cache.rs            # Internal Flash audio cache reader (audio_cache partition)
+|   +-- flash_layout.rs           # Audio cache bounds validation
 |   +-- http_server.rs            # Lightweight HTTP/1.1 server (POST /api/bundle) for live settings sync
+|   +-- i2s_sink.rs               # I2S DMA audio output
 |   +-- led.rs                    # Status indicator LED controller (GPIO 2)
 |   +-- main.rs                   # Firmware entry point, peripherals, and event loop
 |   +-- mdns.rs                   # Multicast DNS & DNS-SD responder (_khvylyna._tcp.local, khvylyna.local)
+|   +-- pcm.rs                    # PCM frame conversion and volume
 |   +-- scheduler.rs              # Daily ceremony trigger loop with compensation
 |   +-- sdcard.rs                 # MicroSD SPI driver & WAV streaming parser (FAT32)
 |   +-- sntp.rs                   # SNTP network time synchronization via embassy-net
+|   +-- wav.rs                    # Supported WAV header validation
 |   \-- wifi.rs                   # Wi-Fi station controller via esp-radio
 +-- Cargo.toml                    # Firmware package manifest (no_std, alloc)
 +-- partitions.csv                # ESP32 partition table (1.5 MB app + 2.4 MB audio_cache)
@@ -139,13 +144,17 @@ cargo espflash flash --monitor
 
 ### Tiered Audio Storage Hierarchy
 
-The firmware employs a resilient three-tier audio playback fallback:
+The firmware attempts audio playback in this order:
 
 1. **Tier 1 (MicroSD Card)**: If an SD card is present, WAV files matching the active preset and voice are streamed directly from FAT32 storage via SPI.
-2. **Tier 2 (Internal Flash Cache)**: If the SD card is absent, the player reads pre-cached WAV blocks for the active preset from the dedicated `audio_cache` internal Flash partition (2.4 MB).
-3. **Tier 3 (Synthetic Cadence)**: If neither storage tier has the audio file, the system synthesizes 440 Hz bell resonance strikes and 1200 Hz metronome pulses on-the-fly.
+2. **Internal Flash cache**: If the SD file is unavailable, the player attempts to read a cached WAV block from the dedicated `audio_cache` partition (approximately 2.4 MiB).
+3. **Missing audio**: If neither source provides the block, the firmware waits for the announcement, bell, metronome, or ending duration without producing sound. A missing anthem is skipped. If playback fails after I2S transmission has started, the block ends without retrying the other source.
 
-During normal operation, the microcontroller never writes to internal Flash. Audio caching occurs strictly during intentional configuration import operations.
+The firmware currently reads the audio cache but does not populate it: audio-file transfer and cache writing are not implemented. Audio files must currently be placed on a FAT32 microSD card separately.
+
+The I2S output supports canonical 44-byte-header WAV files containing 16-bit PCM at **44,100 Hz**, in mono or stereo. Mono samples are duplicated to both output channels. Other sample rates and formats are not played.
+
+The selected `Silence` block lasts 60 seconds. When an opening announcement or bell is immediately followed by the metronome, a one-second pause is inserted before the metronome, using the shared `khvylyna-core` timing rule.
 
 ### MicroSD Audio Assets
 
@@ -168,7 +177,7 @@ The device looks up uncompressed 16-bit PCM WAV audio files at the root of a FAT
 | | `ANTH_KHO.WAV` | Anthem performed by Mykhailo Khoma |
 | | `ANTH_PON.WAV` | Anthem performed by Oleksandr Ponomarov |
 
-If any file is absent or the card is disconnected, the firmware gracefully falls back to synthetic cadence timing without interruption.
+If a file is absent or the card is disconnected, the firmware tries the Flash cache and then handles missing audio as described above; it does not synthesize a replacement sound.
 
 ### Local Device Discovery (mDNS & DNS-SD)
 
