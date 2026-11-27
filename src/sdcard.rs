@@ -1,5 +1,8 @@
 //! MicroSD card reader driver and WAV stream parser.
 
+use khvylyna_core::models::presets::{AnnouncementVoice, AnthemVoice};
+use khvylyna_core::{PresetBlock, Settings};
+
 /// Metadata parsed from standard RIFF/WAVE audio headers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WavHeader {
@@ -49,5 +52,33 @@ impl WavHeader {
             bits_per_sample,
             data_length,
         })
+    }
+}
+
+/// Resolves standard 8.3 FAT filenames for ceremony audio blocks based on configuration.
+pub fn filename_for_block(block: &PresetBlock, settings: &Settings) -> Option<&'static str> {
+    match block {
+        PresetBlock::Announcement => match settings.announcement_voice {
+            AnnouncementVoice::BohdanHdal => Some("ANN_HDAL.WAV"),
+            AnnouncementVoice::SoniaSotnyk => Some("ANN_SOTN.WAV"),
+            AnnouncementVoice::DaniaKhomutovskyi => Some("ANN_KHOM.WAV"),
+            AnnouncementVoice::RadioBg => Some("ANN_R_BG.WAV"),
+            AnnouncementVoice::VinnytsiaCity => Some("ANN_VINN.WAV"),
+        },
+        PresetBlock::Bell => Some("BELL.WAV"),
+        PresetBlock::Metronome => Some("METRONOM.WAV"),
+        PresetBlock::Silence => None,
+        PresetBlock::Ending => match settings.announcement_voice {
+            AnnouncementVoice::BohdanHdal => Some("END_HDAL.WAV"),
+            AnnouncementVoice::SoniaSotnyk => Some("END_SOTN.WAV"),
+            AnnouncementVoice::DaniaKhomutovskyi => Some("END_KHOM.WAV"),
+            AnnouncementVoice::RadioBg => Some("END_R_BG.WAV"),
+            AnnouncementVoice::VinnytsiaCity => None,
+        },
+        PresetBlock::Anthem => match settings.anthem_voice {
+            AnthemVoice::Default => Some("ANTHEM.WAV"),
+            AnthemVoice::MykhailoKhoma => Some("ANTH_KHO.WAV"),
+            AnthemVoice::OleksandrPonomarov => Some("ANTH_PON.WAV"),
+        },
     }
 }
