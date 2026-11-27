@@ -60,7 +60,7 @@ async fn main(spawner: Spawner) -> ! {
     let sd_cs = Output::new(peripherals.GPIO5, Level::High, OutputConfig::default());
     let delay = Delay::new();
 
-    let _sd_storage = if let Some(spi) = spi_bus {
+    let mut sd_storage = if let Some(spi) = spi_bus {
         match ExclusiveDevice::new(spi, sd_cs, delay) {
             Ok(spi_device) => match sdcard::SdCardStorage::new(spi_device, delay) {
                 Ok(storage) => Some(storage),
@@ -120,7 +120,7 @@ async fn main(spawner: Spawner) -> ! {
             amp_control.enable();
             Timer::after(Duration::from_millis(200)).await;
 
-            audio_player.play_ceremony(&settings).await;
+            audio_player.play_ceremony(&settings, &mut sd_storage).await;
 
             Timer::after(Duration::from_millis(500)).await;
             amp_control.disable();
