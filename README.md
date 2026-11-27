@@ -14,7 +14,7 @@ The firmware reuses the core domain logic and data contracts directly from [khvy
 | Component | Recommendation | Description |
 |---|---|---|
 | **MCU** | ESP32-WROOM-32 | Dual-core Xtensa LX6, 4 MB Flash |
-| **Audio Storage** | MicroSD Card Module (SPI) | FAT32 formatted card with uncompressed WAV audio blocks |
+| **Audio Storage** | MicroSD Card Module (SPI) + Internal Flash | Primary FAT32 SD card with 2.4 MB internal Flash cache fallback |
 | **Audio DAC / Amp** | MAX98357A / PCM5102A | Modular I2S audio interface (compact amp or line-out DAC) |
 | **Speaker** | 4–8 Ω, 3 W / PA Horn | 40–50 mm full-range driver or outdoor horn loudspeaker |
 | **Status LED** | On-board / External LED | Active-high status indicator |
@@ -81,6 +81,7 @@ minute-of-silence-device/
 +-- src/
 |   +-- audio.rs                  # Audio cadence synthesis (metronome, bells) & I2S interface
 |   +-- button.rs                 # Active-low hardware button driver (GPIO 0 / BOOT)
+|   +-- flash_cache.rs            # Internal Flash audio cache reader (audio_cache partition)
 |   +-- led.rs                    # Status indicator LED controller (GPIO 2)
 |   +-- main.rs                   # Firmware entry point, peripherals, and event loop
 |   +-- mdns.rs                   # Multicast DNS (mDNS) responder (khvylyna.local)
@@ -89,6 +90,7 @@ minute-of-silence-device/
 |   +-- sntp.rs                   # SNTP network time synchronization via embassy-net
 |   \-- wifi.rs                   # Wi-Fi station controller via esp-radio
 +-- Cargo.toml                    # Firmware package manifest (no_std, alloc)
++-- partitions.csv                # ESP32 partition table (1.5 MB app + 2.4 MB audio_cache)
 +-- rust-toolchain.toml           # Xtensa ESP toolchain specification
 \-- README.md
 ```
@@ -133,6 +135,16 @@ Flash the device and open the serial monitor:
 ```bash
 cargo espflash flash --monitor
 ```
+
+### Tiered Audio Storage Hierarchy
+
+The firmware employs a resilient three-tier audio playback fallback:
+
+1. **Tier 1 (MicroSD Card)**: If an SD card is present, WAV files matching the active preset and voice are streamed directly from FAT32 storage via SPI.
+2. **Tier 2 (Internal Flash Cache)**: If the SD card is absent, the player reads pre-cached WAV blocks for the active preset from the dedicated `audio_cache` internal Flash partition (2.4 MB).
+3. **Tier 3 (Synthetic Cadence)**: If neither storage tier has the audio file, the system synthesizes 440 Hz bell resonance strikes and 1200 Hz metronome pulses on-the-fly.
+
+During normal operation, the microcontroller never writes to internal Flash. Audio caching occurs strictly during intentional configuration import operations.
 
 ### MicroSD Audio Assets
 
