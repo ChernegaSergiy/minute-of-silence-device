@@ -16,7 +16,7 @@ esp-println = { version = "0.18.0", features = ["esp32", "log-04"] }
 esp-radio = { version = "1.0.0-beta.1", features = ["esp32", "wifi"] }
 esp-rtos = { version = "0.4.0", features = ["esp32", "esp-radio", "embassy"] }
 embassy-executor = "0.10.0"
-embassy-net = { version = "0.9.1", features = ["dhcpv4", "medium-ethernet", "udp", "dns"] }
+embassy-net = { version = "0.9.1", features = ["dhcpv4", "medium-ethernet", "udp", "dns", "multicast"] }
 embassy-time = "0.5.0"
 sntpc = { version = "0.11", default-features = false }
 sntpc-net-embassy = { version = "0.11", default-features = false }
