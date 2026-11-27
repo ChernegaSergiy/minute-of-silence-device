@@ -84,6 +84,7 @@ minute-of-silence-device/
 |   +-- led.rs                    # Status indicator LED controller (GPIO 2)
 |   +-- main.rs                   # Firmware entry point, peripherals, and event loop
 |   +-- scheduler.rs              # Daily ceremony trigger loop with compensation
+|   +-- sdcard.rs                 # MicroSD SPI driver & WAV streaming parser (FAT32)
 |   +-- sntp.rs                   # SNTP network time synchronization via embassy-net
 |   \-- wifi.rs                   # Wi-Fi station controller via esp-radio
 +-- Cargo.toml                    # Firmware package manifest (no_std, alloc)
@@ -131,6 +132,29 @@ Flash the device and open the serial monitor:
 ```bash
 cargo espflash flash --monitor
 ```
+
+### MicroSD Audio Assets
+
+The device looks up uncompressed 16-bit PCM WAV audio files at the root of a FAT32 MicroSD card using standard 8.3 FAT filenames corresponding to the active voice configuration:
+
+| Category | File | Description |
+|---|---|---|
+| **Memorial Announcement** | `ANN_HDAL.WAV` | Voice: Bohdan Hdal (default) |
+| | `ANN_SOTN.WAV` | Voice: Sonia Sotnyk |
+| | `ANN_KHOM.WAV` | Voice: Dania Khomutovskyi |
+| | `ANN_R_BG.WAV` | Voice: Radio BG |
+| | `ANN_VINN.WAV` | Voice: Vinnytsia City |
+| **Cadence & Bells** | `BELL.WAV` | Memorial bell strikes |
+| | `METRONOM.WAV` | 60-second memorial metronome cadence |
+| **Closing Recording** | `END_HDAL.WAV` | Closing: Bohdan Hdal |
+| | `END_SOTN.WAV` | Closing: Sonia Sotnyk |
+| | `END_KHOM.WAV` | Closing: Dania Khomutovskyi |
+| | `END_R_BG.WAV` | Closing: Radio BG |
+| **National Anthem** | `ANTHEM.WAV` | State Anthem of Ukraine (standard choral) |
+| | `ANTH_KHO.WAV` | Anthem performed by Mykhailo Khoma |
+| | `ANTH_PON.WAV` | Anthem performed by Oleksandr Ponomarov |
+
+If any file is absent or the card is disconnected, the firmware gracefully falls back to synthetic cadence timing without interruption.
 
 ### Manual Testing
 
