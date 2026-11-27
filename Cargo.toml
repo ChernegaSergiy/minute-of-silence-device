@@ -27,6 +27,9 @@ log = "0.4"
 embedded-sdmmc = { version = "0.8.1", default-features = false }
 embedded-hal-bus = "0.3.0"
 khvylyna-core = { git = "https://github.com/ChernegaSergiy/minute-of-silence", default-features = false, features = ["alloc"] }
+khvylyna-pairing = { git = "https://github.com/ChernegaSergiy/minute-of-silence", branch = "feature/cpace-pairing", default-features = false }
+rand_core = "0.6"
+rand_chacha = { version = "0.3", default-features = false }
 
 [profile.dev]
 opt-level = "s"

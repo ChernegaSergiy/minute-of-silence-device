@@ -45,7 +45,7 @@ pub async fn net_task(mut runner: Runner<'static, Interface>) {
 pub fn init_wifi(
     wifi_peripheral: esp_hal::peripherals::WIFI<'static>,
     spawner: &Spawner,
-) -> Stack<'static> {
+) -> (Stack<'static>, u64) {
     let mut station_config = StationConfig::default();
 
     if let Ok(ssid) = DEFAULT_SSID.try_into() {
@@ -68,13 +68,14 @@ pub fn init_wifi(
 
     let net_config = embassy_net::Config::dhcpv4(Default::default());
     let rng = Rng::new();
-    let seed = ((rng.random() as u64) << 32) | (rng.random() as u64);
+    let net_seed = ((rng.random() as u64) << 32) | (rng.random() as u64);
+    let pairing_seed = ((rng.random() as u64) << 32) | (rng.random() as u64);
 
     let stack_resources = Box::leak(Box::new(StackResources::<6>::new()));
-    let (stack, runner) = embassy_net::new(wifi_interface, net_config, stack_resources, seed);
+    let (stack, runner) = embassy_net::new(wifi_interface, net_config, stack_resources, net_seed);
 
     spawner.spawn(connection_task(controller).unwrap());
     spawner.spawn(net_task(runner).unwrap());
 
-    stack
+    (stack, pairing_seed)
 }

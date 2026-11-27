@@ -14,13 +14,13 @@ pub const MDNS_MCAST_IPV4: Ipv4Address = Ipv4Address::new(224, 0, 0, 251);
 /// Standard mDNS UDP port: 5353.
 pub const MDNS_PORT: u16 = 5353;
 
-/// Default HTTP server port advertised in the DNS-SD SRV record.
-pub const HTTP_PORT: u16 = 80;
+/// Pairing server port advertised in the DNS-SD SRV record.
+pub const HTTP_PORT: u16 = crate::http_server::PAIRING_PORT;
 
 const HOSTNAME_WIRE: &[u8] = b"\x08khvylyna\x05local\x00";
 const SERVICE_WIRE: &[u8] = b"\x09_khvylyna\x04_tcp\x05local\x00";
 const INSTANCE_WIRE: &[u8] = b"\x08khvylyna\x09_khvylyna\x04_tcp\x05local\x00";
-const TXT_RDATA: &[u8] = b"\x0dkind=hardware\x13name=Khvylyna ESP32\x09ver=0.1.0";
+const TXT_RDATA: &[u8] = b"\x0dkind=hardware\x13name=Khvylyna ESP32\x09ver=0.1.0\x07proto=1";
 
 /// Checks if a received UDP packet contains an mDNS query for `khvylyna.local`.
 pub fn is_query_for_hostname(packet: &[u8]) -> bool {
@@ -74,7 +74,7 @@ pub fn build_a_response(ip: Ipv4Address, buffer: &mut [u8]) -> Option<usize> {
 }
 
 /// Builds a DNS-SD mDNS response packet advertising `_khvylyna._tcp.local`
-/// with PTR, SRV (port 80 -> `khvylyna.local`), TXT (`kind=hardware`), and A records.
+/// with PTR, SRV (port 80 -> `khvylyna.local`), TXT (`kind=hardware`, `proto=1`), and A records.
 pub fn build_dnssd_response(ip: Ipv4Address, buffer: &mut [u8]) -> Option<usize> {
     let mut cursor = 0;
     write_slice(

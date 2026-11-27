@@ -17,7 +17,7 @@ mod wifi;
 use embassy_executor::Spawner;
 use embassy_net::udp::{PacketMetadata, UdpSocket};
 use embassy_net::{IpEndpoint, Ipv4Address, Stack};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_alloc::heap_allocator;
 use esp_backtrace as _;
@@ -158,14 +158,14 @@ async fn main(spawner: Spawner) -> ! {
 
     println!("Device ready. NTP server: {}", settings.ntp_server.as_str());
 
-    let stack = wifi::init_wifi(peripherals.WIFI, &spawner);
+    let (stack, pairing_seed) = wifi::init_wifi(peripherals.WIFI, &spawner);
 
     println!("Waiting for network IP assignment...");
     stack.wait_config_up().await;
     if let Some(cfg) = stack.config_v4() {
         println!("Network ready! IP: {}", cfg.address);
         spawner.spawn(mdns_task(stack, cfg.address.address()).unwrap());
-        spawner.spawn(http_server::http_server_task(stack).unwrap());
+        spawner.spawn(http_server::pairing_task(stack, pairing_seed).unwrap());
     }
 
     sntp::synchronize_time(&stack, &rtc, settings.ntp_server.as_str()).await;
@@ -177,18 +177,32 @@ async fn main(spawner: Spawner) -> ! {
     println!("Scheduler active. Monitoring 09:00:00 trigger or GPIO 0 button press...");
 
     let mut voice_assets = VoiceAssets::for_voice(settings.announcement_voice);
+    let mut code_phase = 0u8;
 
     loop {
         if let Some(updated) = http_server::take_updated_settings() {
             settings = updated;
             voice_assets = VoiceAssets::for_voice(settings.announcement_voice);
-            println!("Active settings updated via HTTP.");
+            println!("Active settings updated via secure pairing.");
         }
+
+        let now_ms = Instant::now().as_millis() as u64;
+        let button_event = test_button.update(now_ms);
+        if matches!(button_event, button::ButtonEvent::Pairing) {
+            println!("Pairing window requested via long button press.");
+        }
+
+        led::show_code(
+            &mut status_led,
+            http_server::pairing_code(),
+            &mut code_phase,
+        )
+        .await;
 
         let current_epoch_secs = rtc.current_time_us() / 1_000_000;
         let scheduled =
             daily_scheduler.should_trigger(current_epoch_secs, &settings, &voice_assets.durations);
-        let manual_test = test_button.is_clicked();
+        let manual_test = matches!(button_event, button::ButtonEvent::Click);
 
         if scheduled || manual_test {
             if manual_test {

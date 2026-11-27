@@ -17,6 +17,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify shared pairing vectors
+        run: cargo +stable test --manifest-path tools/vectors/Cargo.toml --target x86_64-unknown-linux-gnu
+
       - name: Install Rust toolchain for Xtensa
         uses: esp-rs/xtensa-toolchain@v1.7
         with:
