@@ -1,6 +1,6 @@
-use embassy_time::{Duration, Timer};
 use esp_hal::gpio::{Level, Output, OutputConfig, OutputPin};
 
+use crate::led_pattern::CodeDisplay;
 /// Status LED controller for board indicator (e.g. GPIO 2 onboard LED).
 pub struct StatusLed<'d> {
     output: Output<'d>,
@@ -29,42 +29,16 @@ impl<'d> StatusLed<'d> {
     }
 }
 
-/// Shows one digit of the current pairing code and advances the display phase.
-pub async fn show_code<'d>(led: &mut StatusLed<'d>, code: Option<u32>, phase: &mut u8) {
-    let Some(code) = code else {
+/// Updates the pairing-code indicator without blocking the main loop.
+pub fn show_code(
+    led: &mut StatusLed<'_>,
+    display: &mut CodeDisplay,
+    code: Option<u32>,
+    now_ms: u64,
+) {
+    if display.is_on(code, now_ms) {
         led.on();
-        *phase = 0;
-        return;
-    };
-
-    let mut digits = [0u8; 6];
-    let mut value = code;
-    for digit in digits.iter_mut().rev() {
-        *digit = (value % 10) as u8;
-        value /= 10;
-    }
-
-    let slot = usize::from(*phase / 3) % 7;
-    *phase = phase.wrapping_add(1);
-
-    if slot == 6 {
-        led.off();
-        Timer::after(Duration::from_millis(150)).await;
-        return;
-    }
-
-    let digit = digits[slot];
-    if digit == 0 {
-        led.on();
-        Timer::after(Duration::from_millis(500)).await;
-        led.off();
     } else {
-        for _ in 0..digit {
-            led.on();
-            Timer::after(Duration::from_millis(80)).await;
-            led.off();
-            Timer::after(Duration::from_millis(80)).await;
-        }
+        led.off();
     }
-    Timer::after(Duration::from_millis(150)).await;
 }

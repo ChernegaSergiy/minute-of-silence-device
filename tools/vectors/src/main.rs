@@ -86,6 +86,10 @@ fn main() {}
 mod transfer;
 
 #[cfg(test)]
+#[path = "../../../src/led_pattern.rs"]
+mod led_pattern;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

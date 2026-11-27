@@ -10,6 +10,7 @@ mod button;
 mod flash_cache;
 mod http_server;
 mod led;
+mod led_pattern;
 mod mdns;
 mod scheduler;
 mod sdcard;
@@ -180,7 +181,7 @@ async fn main(spawner: Spawner) -> ! {
     println!("Scheduler active. Monitoring 09:00:00 trigger or GPIO 0 button press...");
 
     let mut voice_assets = VoiceAssets::for_voice(settings.announcement_voice);
-    let mut code_phase = 0u8;
+    let mut code_display = led_pattern::CodeDisplay::default();
 
     loop {
         if let Some(updated) = http_server::take_updated_settings() {
@@ -197,10 +198,10 @@ async fn main(spawner: Spawner) -> ! {
 
         led::show_code(
             &mut status_led,
+            &mut code_display,
             http_server::pairing_code(),
-            &mut code_phase,
-        )
-        .await;
+            now_ms,
+        );
 
         let current_epoch_secs = rtc.current_time_us() / 1_000_000;
         let scheduled =
