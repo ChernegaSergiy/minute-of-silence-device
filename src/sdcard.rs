@@ -1,9 +1,7 @@
 //! MicroSD card reader driver and WAV stream parser.
 
 use embedded_hal_bus::spi::ExclusiveDevice;
-use embedded_sdmmc::{
-    Error as SdError, Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager,
-};
+use embedded_sdmmc::{Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Output;
 use esp_hal::spi::master::Spi;
