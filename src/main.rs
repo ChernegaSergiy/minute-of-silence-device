@@ -54,7 +54,8 @@ pub async fn mdns_task(stack: Stack<'static>, local_ip: Ipv4Address) {
         println!("[mDNS] Warning: failed to join multicast group: {:?}", e);
     } else {
         println!(
-            "[mDNS] Active on 224.0.0.251:5353. Resolving {}.local -> {}",
+            "[mDNS] Active on 224.0.0.251:5353. Advertising {} and {}.local -> {}",
+            mdns::SERVICE_TYPE,
             mdns::MDNS_HOSTNAME,
             local_ip
         );
@@ -66,11 +67,25 @@ pub async fn mdns_task(stack: Stack<'static>, local_ip: Ipv4Address) {
     loop {
         match socket.recv_from(&mut buf).await {
             Ok((n, remote)) => {
-                if mdns::is_query_for_hostname(&buf[..n]) {
-                    if let Some(resp_len) = mdns::build_a_response(local_ip, &mut resp) {
-                        let dest = IpEndpoint::new(mdns::MDNS_MCAST_IPV4.into(), mdns::MDNS_PORT);
+                let packet = &buf[..n];
+                let dest = if remote.endpoint.port != mdns::MDNS_PORT {
+                    remote.endpoint
+                } else {
+                    IpEndpoint::new(mdns::MDNS_MCAST_IPV4.into(), mdns::MDNS_PORT)
+                };
+
+                if mdns::is_query_for_service(packet) {
+                    if let Some(resp_len) = mdns::build_dnssd_response(local_ip, &mut resp) {
                         let _ = socket.send_to(&resp[..resp_len], dest).await;
-                        println!("[mDNS] Responded to query from {:?}", remote);
+                        println!(
+                            "[mDNS] Responded to DNS-SD query from {:?}",
+                            remote.endpoint
+                        );
+                    }
+                } else if mdns::is_query_for_hostname(packet) {
+                    if let Some(resp_len) = mdns::build_a_response(local_ip, &mut resp) {
+                        let _ = socket.send_to(&resp[..resp_len], dest).await;
+                        println!("[mDNS] Responded to A query from {:?}", remote.endpoint);
                     }
                 }
             }
