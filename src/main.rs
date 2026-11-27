@@ -147,9 +147,7 @@ async fn main(spawner: Spawner) -> ! {
     stack.wait_config_up().await;
     if let Some(cfg) = stack.config_v4() {
         println!("Network ready! IP: {}", cfg.address);
-        spawner
-            .spawn(mdns_task(stack, cfg.address.address()))
-            .unwrap();
+        spawner.spawn(mdns_task(stack, cfg.address.address()).unwrap());
     }
 
     sntp::synchronize_time(&stack, &rtc, settings.ntp_server.as_str()).await;
