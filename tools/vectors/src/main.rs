@@ -102,6 +102,10 @@ mod wav;
 mod flash_layout;
 
 #[cfg(test)]
+#[path = "../../../src/audio_timing.rs"]
+mod audio_timing;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

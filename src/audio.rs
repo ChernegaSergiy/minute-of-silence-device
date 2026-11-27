@@ -7,6 +7,7 @@ use esp_println::println;
 use khvylyna_core::voices::{VoiceAssets, effective_blocks};
 use khvylyna_core::{PresetBlock, Settings};
 
+use crate::audio_timing::pause_after;
 use crate::flash_cache::FlashAudioCache;
 use crate::i2s_sink::I2sSink;
 use crate::sdcard::SdCardStorage;
@@ -200,8 +201,12 @@ impl<'i2s> AudioPlayer<'i2s> {
         }
 
         let blocks = effective_blocks(&settings.blocks, settings.announcement_voice);
-        for block in &blocks {
+        for (index, block) in blocks.iter().enumerate() {
             self.play_block(block, settings, storage, flash_cache).await;
+            let pause = pause_after(&blocks, index);
+            if !pause.is_zero() {
+                Timer::after(Duration::from_micros(pause.as_micros() as u64)).await;
+            }
         }
 
         println!("[Audio] Ceremony audio sequence completed.");
