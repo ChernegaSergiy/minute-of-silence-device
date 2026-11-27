@@ -4,7 +4,7 @@
 //! partition (offset 0x190000, size 2.4 MB) when no MicroSD card is present.
 
 use esp_println::println;
-use esp_storage::FlashStorage;
+use esp_rom_sys::rom::spiflash::esp_rom_spiflash_read;
 use khvylyna_core::PresetBlock;
 
 use crate::sdcard::WavHeader;
@@ -26,16 +26,19 @@ pub struct CachedBlockEntry {
 }
 
 /// Reader and manager for the internal Flash audio cache partition.
-pub struct FlashAudioCache {
-    storage: FlashStorage,
-}
+pub struct FlashAudioCache;
 
 impl FlashAudioCache {
     /// Creates a new instance of the internal Flash audio cache.
-    pub fn new() -> Self {
-        Self {
-            storage: FlashStorage::new(),
-        }
+    pub const fn new() -> Self {
+        Self
+    }
+
+    /// Reads arbitrary bytes from raw SPI Flash via ROM driver.
+    fn read_flash(&self, addr: u32, buf: &mut [u8]) -> bool {
+        let len = buf.len() as u32;
+        let res = unsafe { esp_rom_spiflash_read(addr, buf.as_mut_ptr() as *const u32, len) };
+        res == 0
     }
 
     /// Converts a PresetBlock into an internal numerical ID.
@@ -58,11 +61,7 @@ impl FlashAudioCache {
         let target_id = Self::block_to_id(block);
         let mut header_buf = [0u8; 16];
 
-        if self
-            .storage
-            .read(AUDIO_CACHE_OFFSET, &mut header_buf)
-            .is_err()
-        {
+        if !self.read_flash(AUDIO_CACHE_OFFSET, &mut header_buf) {
             return false;
         }
 
@@ -78,7 +77,7 @@ impl FlashAudioCache {
         let mut entry_buf = [0u8; 12];
         for i in 0..num_entries.min(8) {
             let entry_offset = AUDIO_CACHE_OFFSET + 16 + (i as u32 * 12);
-            if self.storage.read(entry_offset, &mut entry_buf).is_ok() {
+            if self.read_flash(entry_offset, &mut entry_buf) {
                 let block_id = entry_buf[0];
                 let flash_offset =
                     u32::from_le_bytes([entry_buf[4], entry_buf[5], entry_buf[6], entry_buf[7]]);
@@ -106,11 +105,7 @@ impl FlashAudioCache {
         }
 
         let mut wav_header_buf = [0u8; 44];
-        if self
-            .storage
-            .read(entry.flash_offset, &mut wav_header_buf)
-            .is_err()
-        {
+        if !self.read_flash(entry.flash_offset, &mut wav_header_buf) {
             return false;
         }
 
@@ -133,11 +128,7 @@ impl FlashAudioCache {
 
         while bytes_left > 0 {
             let to_read = data_buf.len().min(bytes_left);
-            if self
-                .storage
-                .read(current_offset, &mut data_buf[..to_read])
-                .is_err()
-            {
+            if !self.read_flash(current_offset, &mut data_buf[..to_read]) {
                 println!("[Flash] Read error during audio streaming");
                 break;
             }
