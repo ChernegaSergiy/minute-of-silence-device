@@ -90,6 +90,10 @@ mod transfer;
 mod led_pattern;
 
 #[cfg(test)]
+#[path = "../../../src/pcm.rs"]
+mod pcm;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
