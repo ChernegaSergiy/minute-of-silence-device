@@ -7,10 +7,11 @@ use esp_println::println;
 use esp_rom_sys::rom::spiflash::esp_rom_spiflash_read;
 use khvylyna_core::PresetBlock;
 
-use crate::{audio::PcmSink, wav::WavHeader};
-
-/// Base offset of the audio_cache partition in Flash (from partitions.csv).
-pub const AUDIO_CACHE_OFFSET: u32 = 0x190000;
+use crate::{
+    audio::PcmSink,
+    flash_layout::{AUDIO_CACHE_OFFSET, valid_entry, valid_wav_length},
+    wav::WavHeader,
+};
 
 /// Magic identifier for valid audio cache header.
 pub const CACHE_MAGIC: &[u8; 6] = b"KCACHE";
@@ -36,9 +37,25 @@ impl FlashAudioCache {
 
     /// Reads arbitrary bytes from raw SPI Flash via ROM driver.
     fn read_flash(&self, addr: u32, buf: &mut [u8]) -> bool {
-        let len = buf.len() as u32;
-        let res = unsafe { esp_rom_spiflash_read(addr, buf.as_mut_ptr() as *const u32, len) };
-        res == 0
+        if buf.is_empty() {
+            return true;
+        }
+        if buf.len() > 512 {
+            return false;
+        }
+        let aligned_addr = addr & !3;
+        let prefix = (addr - aligned_addr) as usize;
+        let len = (prefix + buf.len()).div_ceil(4) * 4;
+        let mut words = [0u32; 129];
+        let res = unsafe { esp_rom_spiflash_read(aligned_addr, words.as_mut_ptr(), len as u32) };
+        if res != 0 {
+            return false;
+        }
+        for (index, byte) in buf.iter_mut().enumerate() {
+            let position = prefix + index;
+            *byte = (words[position / 4] >> ((position % 4) * 8)) as u8;
+        }
+        true
     }
 
     /// Converts a PresetBlock into an internal numerical ID.
@@ -71,7 +88,11 @@ impl FlashAudioCache {
             return false;
         }
 
-        let num_entries = u16::from_le_bytes([header_buf[6], header_buf[7]]) as usize;
+        let count = u16::from_le_bytes([header_buf[6], header_buf[7]]);
+        if count == 0 || count > 8 {
+            return false;
+        }
+        let num_entries = usize::from(count);
         let mut matching_entry: Option<CachedBlockEntry> = None;
 
         // Table of entries follows 16-byte header, 12 bytes each
@@ -101,7 +122,7 @@ impl FlashAudioCache {
             return false;
         };
 
-        if entry.length < 44 {
+        if !valid_entry(count, entry.flash_offset, entry.length) {
             return false;
         }
 
@@ -113,6 +134,9 @@ impl FlashAudioCache {
         let Some(wav_header) = WavHeader::parse(&wav_header_buf) else {
             return false;
         };
+        if !valid_wav_length(entry.length, wav_header.data_length) {
+            return false;
+        }
 
         println!(
             "[Flash] Streaming cached block #{}: {} Hz, {}-bit, {} ch, {} bytes",

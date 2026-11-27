@@ -98,6 +98,10 @@ mod pcm;
 mod wav;
 
 #[cfg(test)]
+#[path = "../../../src/flash_layout.rs"]
+mod flash_layout;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

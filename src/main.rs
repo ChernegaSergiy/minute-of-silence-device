@@ -8,6 +8,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 mod audio;
 mod button;
 mod flash_cache;
+mod flash_layout;
 mod http_server;
 mod led;
 mod led_pattern;
