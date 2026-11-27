@@ -43,6 +43,7 @@ use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_println::println;
+use esp_storage::FlashStorage;
 use khvylyna_core::Settings;
 use khvylyna_core::voices::VoiceAssets;
 
@@ -164,7 +165,20 @@ async fn main(spawner: Spawner) -> ! {
         None
     };
 
-    let mut settings = Settings::default();
+    let (_settings_store, saved_settings) = settings_store::SettingsStore::open(
+        FlashStorage::new(peripherals.FLASH),
+        flash_layout::SETTINGS_OFFSET,
+    );
+    let mut settings = match saved_settings {
+        Some(saved) => {
+            println!("[Settings] Loaded saved settings from flash");
+            saved
+        }
+        None => {
+            println!("[Settings] No valid saved settings, using defaults");
+            Settings::default()
+        }
+    };
     settings.migrate();
     if settings.validate().is_err() {
         println!("Configuration validation failed, fallback to default");
