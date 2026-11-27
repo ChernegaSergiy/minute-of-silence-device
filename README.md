@@ -83,20 +83,25 @@ minute-of-silence-device/
 |   +-- audio_timing.rs           # Pause before the metronome
 |   +-- button.rs                 # Active-low hardware button driver (GPIO 0 / BOOT)
 |   +-- flash_cache.rs            # Internal Flash audio cache reader (audio_cache partition)
-|   +-- flash_layout.rs           # Audio cache bounds validation
+|   +-- flash_layout.rs           # Audio cache and settings partition bounds
 |   +-- http_server.rs            # Pairing server on TCP port 80 for protected settings transfer
 |   +-- i2s_sink.rs               # I2S DMA audio output
 |   +-- led.rs                    # Status indicator LED controller (GPIO 2)
+|   +-- led_pattern.rs            # Blink pattern that shows the pairing code
 |   +-- main.rs                   # Firmware entry point, peripherals, and event loop
 |   +-- mdns.rs                   # Multicast DNS & DNS-SD responder (_khvylyna._tcp.local, khvylyna.local)
 |   +-- pcm.rs                    # PCM frame conversion and volume
 |   +-- scheduler.rs              # Daily ceremony trigger loop with compensation
 |   +-- sdcard.rs                 # MicroSD SPI driver & WAV streaming parser (FAT32)
+|   +-- settings_flash.rs         # Settings flash access via esp-storage
+|   +-- settings_record.rs        # Checksummed two-slot settings record format
+|   +-- settings_store.rs         # Loading and durably saving settings
 |   +-- sntp.rs                   # SNTP network time synchronization via embassy-net
+|   +-- transfer.rs               # Parsing of settings received through pairing
 |   +-- wav.rs                    # Supported WAV header validation
 |   \-- wifi.rs                   # Wi-Fi station controller via esp-radio
 +-- Cargo.toml                    # Firmware package manifest (no_std, alloc)
-+-- partitions.csv                # ESP32 partition table (1.5 MB app + 2.4 MB audio_cache)
++-- partitions.csv                # ESP32 partition table (1.5 MB app, 2.4 MB audio_cache, 64 KB settings)
 +-- rust-toolchain.toml           # Xtensa ESP toolchain specification
 \-- README.md
 ```
