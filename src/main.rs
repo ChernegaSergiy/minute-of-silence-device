@@ -6,12 +6,15 @@ extern crate alloc;
 mod audio;
 mod button;
 mod led;
+mod mdns;
 mod scheduler;
 mod sdcard;
 mod sntp;
 mod wifi;
 
 use embassy_executor::Spawner;
+use embassy_net::udp::{PacketMetadata, UdpSocket};
+use embassy_net::{IpEndpoint, Ipv4Address, Stack};
 use embassy_time::{Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_alloc::heap_allocator;
@@ -25,6 +28,57 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_println::println;
 use khvylyna_core::Settings;
 use khvylyna_core::voices::VoiceAssets;
+
+#[embassy_executor::task]
+pub async fn mdns_task(stack: Stack<'static>, local_ip: Ipv4Address) {
+    let mut rx_meta = [PacketMetadata::EMPTY; 4];
+    let mut rx_buffer = [0u8; 1024];
+    let mut tx_meta = [PacketMetadata::EMPTY; 4];
+    let mut tx_buffer = [0u8; 1024];
+
+    let mut socket = UdpSocket::new(
+        stack,
+        &mut rx_meta,
+        &mut rx_buffer,
+        &mut tx_meta,
+        &mut tx_buffer,
+    );
+
+    if let Err(e) = socket.bind(mdns::MDNS_PORT) {
+        println!("[mDNS] Failed to bind port 5353: {:?}", e);
+        return;
+    }
+
+    if let Err(e) = stack.join_multicast_group(mdns::MDNS_MCAST_IPV4) {
+        println!("[mDNS] Warning: failed to join multicast group: {:?}", e);
+    } else {
+        println!(
+            "[mDNS] Active on 224.0.0.251:5353. Resolving {}.local -> {}",
+            mdns::MDNS_HOSTNAME,
+            local_ip
+        );
+    }
+
+    let mut buf = [0u8; 512];
+    let mut resp = [0u8; 512];
+
+    loop {
+        match socket.recv_from(&mut buf).await {
+            Ok((n, remote)) => {
+                if mdns::is_query_for_hostname(&buf[..n]) {
+                    if let Some(resp_len) = mdns::build_a_response(local_ip, &mut resp) {
+                        let dest = IpEndpoint::new(mdns::MDNS_MCAST_IPV4.into(), mdns::MDNS_PORT);
+                        let _ = socket.send_to(&resp[..resp_len], dest).await;
+                        println!("[mDNS] Responded to query from {:?}", remote);
+                    }
+                }
+            }
+            Err(_) => {
+                Timer::after(Duration::from_millis(100)).await;
+            }
+        }
+    }
+}
 
 #[main]
 async fn main(spawner: Spawner) -> ! {
@@ -93,6 +147,9 @@ async fn main(spawner: Spawner) -> ! {
     stack.wait_config_up().await;
     if let Some(cfg) = stack.config_v4() {
         println!("Network ready! IP: {}", cfg.address);
+        spawner
+            .spawn(mdns_task(stack, cfg.address.address()))
+            .unwrap();
     }
 
     sntp::synchronize_time(&stack, &rtc, settings.ntp_server.as_str()).await;
