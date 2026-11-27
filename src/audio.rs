@@ -1,5 +1,7 @@
 use embassy_time::{Duration, Timer};
+use esp_hal::Async;
 use esp_hal::gpio::{Level, Output, OutputConfig, OutputPin};
+use esp_hal::i2s::master::I2sTx;
 use esp_println::println;
 use khvylyna_core::voices::{VoiceAssets, effective_blocks};
 use khvylyna_core::{PresetBlock, Settings};
@@ -68,21 +70,15 @@ pub fn lookup_sine(phase: u8) -> i16 {
     }
 }
 
-/// Hardware audio interface controller for MAX98357A I2S DAC amplifier.
-pub struct AudioPlayer {
-    pub pin_bclk: u8,
-    pub pin_ws: u8,
-    pub pin_din: u8,
+/// Ceremony audio player with an optional external I2S output.
+pub struct AudioPlayer<'d> {
+    i2s: Option<I2sTx<'d, Async>>,
 }
 
-impl AudioPlayer {
-    /// Creates a new AudioPlayer instance with specified GPIO pins.
-    pub const fn new(pin_bclk: u8, pin_ws: u8, pin_din: u8) -> Self {
-        Self {
-            pin_bclk,
-            pin_ws,
-            pin_din,
-        }
+impl<'i2s> AudioPlayer<'i2s> {
+    /// Creates an audio player using the configured I2S transmitter.
+    pub const fn new(i2s: Option<I2sTx<'i2s, Async>>) -> Self {
+        Self { i2s }
     }
 
     /// Simulates metronome ticking cadence (60 distinct 1-second cadence pulses).
@@ -196,10 +192,9 @@ impl AudioPlayer {
         storage: &mut Option<SdCardStorage<'d>>,
         flash_cache: &mut FlashAudioCache,
     ) {
-        println!(
-            "[Audio] Initiating ceremony audio on I2S (BCLK: GPIO {}, WS: GPIO {}, DIN: GPIO {})...",
-            self.pin_bclk, self.pin_ws, self.pin_din
-        );
+        if self.i2s.is_none() {
+            println!("[Audio] I2S output unavailable");
+        }
 
         let blocks = effective_blocks(&settings.blocks, settings.announcement_voice);
         for block in &blocks {

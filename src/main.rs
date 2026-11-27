@@ -28,9 +28,11 @@ use esp_alloc::heap_allocator;
 use esp_backtrace as _;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{Level, Output, OutputConfig};
+use esp_hal::i2s::master::{Channels, DataFormat, I2s, TdmConfig};
 use esp_hal::main;
 use esp_hal::rtc_cntl::Rtc;
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
+use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_println::println;
 use khvylyna_core::Settings;
@@ -176,7 +178,28 @@ async fn main(spawner: Spawner) -> ! {
     sntp::synchronize_time(&stack, &rtc, settings.ntp_server.as_str()).await;
 
     let mut daily_scheduler = scheduler::DailyScheduler::new();
-    let audio_player = audio::AudioPlayer::new(26, 25, 22);
+    let i2s = match I2s::new(
+        peripherals.I2S0,
+        peripherals.DMA_I2S0,
+        TdmConfig::new_tdm_philips()
+            .with_sample_rate(Rate::from_hz(44100))
+            .with_data_format(DataFormat::Data16Channel16)
+            .with_channels(Channels::STEREO),
+    ) {
+        Ok(i2s) => Some(
+            i2s.into_async()
+                .i2s_tx
+                .with_bclk(peripherals.GPIO26)
+                .with_ws(peripherals.GPIO25)
+                .with_dout(peripherals.GPIO22)
+                .build(),
+        ),
+        Err(error) => {
+            println!("[Audio] Failed to initialize I2S: {:?}", error);
+            None
+        }
+    };
+    let audio_player = audio::AudioPlayer::new(i2s);
     let mut flash_cache = flash_cache::FlashAudioCache::new();
 
     println!("Scheduler active. Monitoring 09:00:00 trigger or GPIO 0 button press...");
