@@ -244,11 +244,14 @@ async fn serve_peer(socket: &mut TcpSocket<'_>, window: &mut PairingWindow, rng:
             return;
         }
     };
-    if let Err(error) = attempt.verify_confirm(&confirm) {
-        reject(socket, error).await;
-        return;
-    }
-    let secret = match window.finish(attempt, now_ms()) {
+    let confirmed = match attempt.verify_confirm(&confirm) {
+        Ok(confirmed) => confirmed,
+        Err(error) => {
+            reject(socket, error).await;
+            return;
+        }
+    };
+    let secret = match window.finish(confirmed, now_ms()) {
         Ok(secret) => secret,
         Err(error) => {
             reject(socket, error).await;
