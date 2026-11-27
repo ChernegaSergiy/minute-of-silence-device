@@ -131,4 +131,104 @@ impl<'d> SdCardStorage<'d> {
 
         Ok(Self { volume_mgr })
     }
+
+    /// Plays a WAV audio file directly from the SD card using a consumer callback.
+    ///
+    /// The callback receives chunks of raw PCM audio data. Returns true if file was
+    /// found, parsed, and read to completion, or false on missing file / error.
+    pub fn stream_file_pcm<F>(&mut self, filename: &str, mut chunk_consumer: F) -> bool
+    where
+        F: FnMut(&[u8], &WavHeader),
+    {
+        let mut volume = match self.volume_mgr.open_volume(VolumeIdx(0)) {
+            Ok(v) => v,
+            Err(_) => {
+                println!("[SD] Error: Unable to open FAT volume");
+                return false;
+            }
+        };
+
+        let mut root_dir = match volume.open_root_dir() {
+            Ok(d) => d,
+            Err(_) => {
+                println!("[SD] Error: Unable to open root directory");
+                let _ = volume.close();
+                return false;
+            }
+        };
+
+        let mut file = match root_dir.open_file_in_dir(filename, Mode::ReadOnly) {
+            Ok(f) => f,
+            Err(_) => {
+                let _ = root_dir.close();
+                let _ = volume.close();
+                return false;
+            }
+        };
+
+        let mut header_buf = [0u8; 44];
+        let mut header_read = 0;
+        while header_read < 44 {
+            match file.read(&mut header_buf[header_read..]) {
+                Ok(0) => break,
+                Ok(n) => header_read += n,
+                Err(_) => break,
+            }
+        }
+
+        if header_read < 44 {
+            println!(
+                "[SD] Error: {} header is too short ({} bytes)",
+                filename, header_read
+            );
+            let _ = file.close();
+            let _ = root_dir.close();
+            let _ = volume.close();
+            return false;
+        }
+
+        let Some(header) = WavHeader::parse(&header_buf) else {
+            println!(
+                "[SD] Error: {} has invalid or unsupported WAV format",
+                filename
+            );
+            let _ = file.close();
+            let _ = root_dir.close();
+            let _ = volume.close();
+            return false;
+        };
+
+        println!(
+            "[SD] Streaming {}: {} Hz, {}-bit, {} ch, {} bytes",
+            filename,
+            header.sample_rate,
+            header.bits_per_sample,
+            header.channels,
+            header.data_length
+        );
+
+        let mut data_buf = [0u8; 512];
+        let mut bytes_left = header.data_length as usize;
+
+        while bytes_left > 0 && !file.is_eof() {
+            let to_read = data_buf.len().min(bytes_left);
+            match file.read(&mut data_buf[..to_read]) {
+                Ok(0) => break,
+                Ok(n) => {
+                    chunk_consumer(&data_buf[..n], &header);
+                    bytes_left = bytes_left.saturating_sub(n);
+                }
+                Err(_) => {
+                    println!("[SD] Error during streaming read of {}", filename);
+                    break;
+                }
+            }
+        }
+
+        let _ = file.close();
+        let _ = root_dir.close();
+        let _ = volume.close();
+
+        true
+    }
 }
