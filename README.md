@@ -82,9 +82,10 @@ minute-of-silence-device/
 |   +-- audio.rs                  # Audio cadence synthesis (metronome, bells) & I2S interface
 |   +-- button.rs                 # Active-low hardware button driver (GPIO 0 / BOOT)
 |   +-- flash_cache.rs            # Internal Flash audio cache reader (audio_cache partition)
+|   +-- http_server.rs            # Lightweight HTTP/1.1 server (POST /api/bundle) for live settings sync
 |   +-- led.rs                    # Status indicator LED controller (GPIO 2)
 |   +-- main.rs                   # Firmware entry point, peripherals, and event loop
-|   +-- mdns.rs                   # Multicast DNS (mDNS) responder (khvylyna.local)
+|   +-- mdns.rs                   # Multicast DNS & DNS-SD responder (_khvylyna._tcp.local, khvylyna.local)
 |   +-- scheduler.rs              # Daily ceremony trigger loop with compensation
 |   +-- sdcard.rs                 # MicroSD SPI driver & WAV streaming parser (FAT32)
 |   +-- sntp.rs                   # SNTP network time synchronization via embassy-net
@@ -169,15 +170,20 @@ The device looks up uncompressed 16-bit PCM WAV audio files at the root of a FAT
 
 If any file is absent or the card is disconnected, the firmware gracefully falls back to synthetic cadence timing without interruption.
 
-### Local Device Discovery (mDNS)
+### Local Device Discovery (mDNS & DNS-SD)
 
-Upon connecting to the local network via Wi-Fi, the device joins multicast group `224.0.0.251` and responds to standard Multicast DNS queries on UDP port 5353. It automatically resolves on the local network as:
+Upon connecting to the local network via Wi-Fi, the device joins multicast group `224.0.0.251` on UDP port `5353` and responds to:
 
-```
-http://khvylyna.local
-```
+- **DNS-SD service queries (`_khvylyna._tcp.local`)**: replies with `PTR`, `SRV` (port `80` -> `khvylyna.local`), `TXT` (`kind=hardware`, `name=Khvylyna ESP32`, `ver=0.1.0`), and `A` records, using unicast replies when queried from ephemeral ports. This allows the Minute of Silence desktop and Android apps to discover and classify the device automatically.
+- **Hostname queries (`khvylyna.local`)**: resolves to the device's IPv4 address so it can also be reached directly as `http://khvylyna.local`.
 
-This allows desktop applications, mobile devices, and diagnostic tools to discover the device and communicate with it without needing to look up dynamic DHCP IP assignments.
+### Remote Settings Sync (`POST /api/bundle`)
+
+The firmware runs a lightweight HTTP/1.1 listener on TCP port `80` exposing `POST /api/bundle`:
+
+- Accepts a JSON `ExportBundle` (or direct `Settings` JSON) up to 16 KiB, matching the format exported by the desktop and Android apps.
+- Runs `khvylyna-core` migration and validation before applying the configuration live in the ceremony loop (updating voice assets and schedule without rebooting).
+- Responds with `200 OK` on success, or `400` / `404` / `405` / `413` on invalid requests.
 
 ### Manual Testing
 
