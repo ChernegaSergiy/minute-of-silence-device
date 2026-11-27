@@ -3,6 +3,8 @@
 
 extern crate alloc;
 
+esp_bootloader_esp_idf::esp_app_desc!();
+
 mod audio;
 mod button;
 mod flash_cache;
