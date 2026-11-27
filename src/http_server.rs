@@ -7,7 +7,7 @@ use embassy_net::Stack;
 use embassy_net::tcp::TcpSocket;
 use embassy_time::{Duration, Instant, Timer};
 use esp_println::println;
-use khvylyna_core::{ExportBundle, Settings};
+use khvylyna_core::Settings;
 use khvylyna_pairing::{
     ProtocolError,
     protocol::{self, FrameKind},
@@ -166,21 +166,10 @@ fn negotiated_limit(hello: &[u8]) -> Result<u16, ProtocolError> {
 }
 
 fn apply_settings(bytes: &[u8]) -> bool {
-    let mut settings = match serde_json::from_slice::<ExportBundle>(bytes) {
-        Ok(bundle) => bundle.settings,
-        Err(_) => match serde_json::from_slice::<Settings>(bytes) {
-            Ok(direct) => direct,
-            Err(_) => {
-                println!("[Pairing] Invalid settings JSON payload");
-                return false;
-            }
-        },
-    };
-    settings.migrate();
-    if settings.validate().is_err() {
-        println!("[Pairing] Settings validation failed");
+    let Some(settings) = crate::transfer::parse_settings(bytes) else {
+        println!("[Pairing] Invalid settings transfer");
         return false;
-    }
+    };
     println!(
         "[Pairing] Applied settings (voice: {:?}, volume: {})",
         settings.announcement_voice, settings.volume

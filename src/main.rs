@@ -12,6 +12,7 @@ mod mdns;
 mod scheduler;
 mod sdcard;
 mod sntp;
+mod transfer;
 mod wifi;
 
 use embassy_executor::Spawner;

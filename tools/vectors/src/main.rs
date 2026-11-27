@@ -82,8 +82,47 @@ impl CryptoRng for FixedRng {}
 fn main() {}
 
 #[cfg(test)]
+#[path = "../../../src/transfer.rs"]
+mod transfer;
+
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transfer_imports_the_enclosed_settings() {
+        let mut settings = khvylyna_core::Settings::default();
+        settings.volume = 37;
+        let bundle = khvylyna_core::ExportBundle {
+            settings,
+            personal_dates: Vec::new(),
+        };
+        let payload = serde_json::json!({
+            "sender_name": "Phone",
+            "json": serde_json::to_string(&bundle).expect("bundle"),
+        });
+        let bytes = serde_json::to_vec(&payload).expect("payload");
+        assert_eq!(
+            transfer::parse_settings(&bytes).expect("settings").volume,
+            37
+        );
+    }
+
+    #[test]
+    fn transfer_rejects_missing_malformed_and_invalid_settings() {
+        for payload in [
+            r#"{}"#,
+            r#"{"sender_name":"Phone","json":"{}"}"#,
+            r#"{"sender_name":"Phone","json":"not json"}"#,
+            r#"{"sender_name":"Phone","json":{"settings":{}}}"#,
+            r#"{"sender_name":"Phone","json":"{\"settings\":{\"volume\":101},\"personalDates\":[]}"}"#,
+        ] {
+            assert!(
+                transfer::parse_settings(payload.as_bytes()).is_none(),
+                "{payload}"
+            );
+        }
+    }
 
     #[test]
     fn device_matches_shared_pairing_vectors() {
