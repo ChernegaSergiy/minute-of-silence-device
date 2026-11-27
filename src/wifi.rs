@@ -70,7 +70,7 @@ pub fn init_wifi(
     let rng = Rng::new();
     let seed = ((rng.random() as u64) << 32) | (rng.random() as u64);
 
-    let stack_resources = Box::leak(Box::new(StackResources::<4>::new()));
+    let stack_resources = Box::leak(Box::new(StackResources::<6>::new()));
     let (stack, runner) = embassy_net::new(wifi_interface, net_config, stack_resources, seed);
 
     spawner.spawn(connection_task(controller).unwrap());
