@@ -4,6 +4,7 @@ use esp_println::println;
 use khvylyna_core::voices::{VoiceAssets, effective_blocks};
 use khvylyna_core::{PresetBlock, Settings};
 
+use crate::flash_cache::FlashAudioCache;
 use crate::sdcard::SdCardStorage;
 
 /// Amplifier enable / mute controller (active-high: GPIO 4 for relay or SD/MUTE).
@@ -93,6 +94,7 @@ impl AudioPlayer {
         block: &PresetBlock,
         settings: &Settings,
         storage: &mut Option<SdCardStorage<'d>>,
+        flash_cache: &mut FlashAudioCache,
     ) {
         let durations = VoiceAssets::for_voice(settings.announcement_voice).durations;
 
@@ -102,7 +104,9 @@ impl AudioPlayer {
             return;
         }
 
-        let mut played_from_sd = false;
+        let mut played_audio = false;
+
+        // Level 1: Attempt to stream directly from MicroSD card
         if let Some(sd) = storage {
             if let Some(filename) = SdCardStorage::filename_for_block(block, settings) {
                 let mut total_samples = 0usize;
@@ -111,17 +115,30 @@ impl AudioPlayer {
                 });
                 if stream_ok {
                     println!(
-                        "[Audio] Completed streaming {} ({} samples) to I2S DAC",
+                        "[Audio] Completed streaming {} ({} samples) from SD to I2S DAC",
                         filename, total_samples
                     );
-                    played_from_sd = true;
-                } else {
-                    println!("[SD] File {} missing on SD card, using fallback", filename);
+                    played_audio = true;
                 }
             }
         }
 
-        if !played_from_sd {
+        // Level 2: Fallback to internal Flash audio cache partition
+        if !played_audio {
+            let mut total_samples = 0usize;
+            if flash_cache.stream_block_pcm(block, |chunk, _header| {
+                total_samples += chunk.len() / 2;
+            }) {
+                println!(
+                    "[Audio] Completed streaming block {:?} ({} samples) from internal Flash cache",
+                    block, total_samples
+                );
+                played_audio = true;
+            }
+        }
+
+        // Level 3: Fallback to synthetic cadence timing
+        if !played_audio {
             match block {
                 PresetBlock::Announcement => {
                     println!(
@@ -163,6 +180,7 @@ impl AudioPlayer {
         &self,
         settings: &Settings,
         storage: &mut Option<SdCardStorage<'d>>,
+        flash_cache: &mut FlashAudioCache,
     ) {
         println!(
             "[Audio] Initiating ceremony audio on I2S (BCLK: GPIO {}, WS: GPIO {}, DIN: GPIO {})...",
@@ -171,7 +189,7 @@ impl AudioPlayer {
 
         let blocks = effective_blocks(&settings.blocks, settings.announcement_voice);
         for block in &blocks {
-            self.play_block(block, settings, storage).await;
+            self.play_block(block, settings, storage, flash_cache).await;
         }
 
         println!("[Audio] Ceremony audio sequence completed.");
