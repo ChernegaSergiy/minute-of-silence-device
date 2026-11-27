@@ -6,6 +6,7 @@ extern crate alloc;
 mod audio;
 mod button;
 mod flash_cache;
+mod http_server;
 mod led;
 mod mdns;
 mod scheduler;
@@ -164,6 +165,7 @@ async fn main(spawner: Spawner) -> ! {
     if let Some(cfg) = stack.config_v4() {
         println!("Network ready! IP: {}", cfg.address);
         spawner.spawn(mdns_task(stack, cfg.address.address()).unwrap());
+        spawner.spawn(http_server::http_server_task(stack).unwrap());
     }
 
     sntp::synchronize_time(&stack, &rtc, settings.ntp_server.as_str()).await;
@@ -174,9 +176,15 @@ async fn main(spawner: Spawner) -> ! {
 
     println!("Scheduler active. Monitoring 09:00:00 trigger or GPIO 0 button press...");
 
-    let voice_assets = VoiceAssets::for_voice(settings.announcement_voice);
+    let mut voice_assets = VoiceAssets::for_voice(settings.announcement_voice);
 
     loop {
+        if let Some(updated) = http_server::take_updated_settings() {
+            settings = updated;
+            voice_assets = VoiceAssets::for_voice(settings.announcement_voice);
+            println!("Active settings updated via HTTP.");
+        }
+
         let current_epoch_secs = rtc.current_time_us() / 1_000_000;
         let scheduled =
             daily_scheduler.should_trigger(current_epoch_secs, &settings, &voice_assets.durations);
