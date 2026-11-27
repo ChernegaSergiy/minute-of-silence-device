@@ -290,9 +290,15 @@ pub async fn pairing_task(stack: Stack<'static>, seed: u64) {
         if take_pairing_request() {
             match PairingWindow::new(now_ms(), &mut rng) {
                 Ok(fresh) => {
-                    set_pairing_code(fresh.code(now_ms()).unwrap_or("000000"));
-                    window = Some(fresh);
-                    println!("[Pairing] Code displayed on LED");
+                    if let Some(code) = fresh.code(now_ms()) {
+                        set_pairing_code(code);
+                        println!("[Pairing] Code: {}", code);
+                        window = Some(fresh);
+                    } else {
+                        clear_pairing_code();
+                        window = None;
+                        println!("[Pairing] Code expired before display");
+                    }
                 }
                 Err(error) => println!("[Pairing] Failed to create window: {}", error),
             }
