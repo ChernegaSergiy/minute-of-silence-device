@@ -84,7 +84,7 @@ minute-of-silence-device/
 |   +-- button.rs                 # Active-low hardware button driver (GPIO 0 / BOOT)
 |   +-- flash_cache.rs            # Internal Flash audio cache reader (audio_cache partition)
 |   +-- flash_layout.rs           # Audio cache bounds validation
-|   +-- http_server.rs            # Lightweight HTTP/1.1 server (POST /api/bundle) for live settings sync
+|   +-- http_server.rs            # Pairing server on TCP port 80 for protected settings transfer
 |   +-- i2s_sink.rs               # I2S DMA audio output
 |   +-- led.rs                    # Status indicator LED controller (GPIO 2)
 |   +-- main.rs                   # Firmware entry point, peripherals, and event loop
@@ -184,15 +184,23 @@ If a file is absent or the card is disconnected, the firmware tries the Flash ca
 Upon connecting to the local network via Wi-Fi, the device joins multicast group `224.0.0.251` on UDP port `5353` and responds to:
 
 - **DNS-SD service queries (`_khvylyna._tcp.local`)**: replies with `PTR`, `SRV` (port `80` -> `khvylyna.local`), `TXT` (`kind=hardware`, `name=Khvylyna ESP32`, `ver=0.1.0`), and `A` records, using unicast replies when queried from ephemeral ports. This allows the Minute of Silence desktop and Android apps to discover and classify the device automatically.
-- **Hostname queries (`khvylyna.local`)**: resolves to the device's IPv4 address so it can also be reached directly as `http://khvylyna.local`.
+- **Hostname queries (`khvylyna.local`)**: resolves to the device's IPv4 address.
 
-### Remote Settings Sync (`POST /api/bundle`)
+### Remote Settings Sync (Pairing on Port 80)
 
-The firmware runs a lightweight HTTP/1.1 listener on TCP port `80` exposing `POST /api/bundle`:
+Settings are sent from the desktop or Android app over a protected exchange, not over plain HTTP:
 
-- Accepts a JSON `ExportBundle` (or direct `Settings` JSON) up to 16 KiB, matching the format exported by the desktop and Android apps.
-- Runs `khvylyna-core` migration and validation before applying the configuration live in the ceremony loop (updating voice assets and schedule without rebooting).
-- Responds with `200 OK` on success, or `400` / `404` / `405` / `413` on invalid requests.
+1. Hold the button on `GPIO 0` for at least 1.5 seconds and release it. The device creates a time-limited, single-use six-digit code. The status LED blinks it digit by digit (a digit is its number of blinks, `0` is one long blink), and the code is also printed to the serial log.
+2. The app finds the device through mDNS, connects to TCP port `80`, and authenticates with the code using the `khvylyna-pairing` exchange. The settings are then transferred encrypted.
+3. The firmware runs `khvylyna-core` migration and validation, saves the settings to flash, and only then confirms to the app. They are applied in the ceremony loop without rebooting (updating voice assets and schedule).
+
+If saving fails, or a ceremony is playing, the settings are rejected and the previous ones stay in force: erasing flash would stall audio streamed from it.
+
+### Persistent Settings
+
+Settings are stored in the `settings` partition as two alternating 16 KiB slots. Each record carries a sequence number and a CRC-32, and a new record is written to the slot that does not hold the current settings. If power is lost during a write, the previous settings are still found and used at the next start. Corrupted or invalid records are skipped.
+
+At startup the device loads the newest valid saved settings, or the defaults if there are none, and reports which one it used in the serial log.
 
 ### Manual Testing
 
