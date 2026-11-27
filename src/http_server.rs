@@ -7,6 +7,7 @@ use embassy_net::Stack;
 use embassy_net::tcp::TcpSocket;
 use embassy_time::{Duration, Instant, Timer};
 use esp_println::println;
+use esp_storage::FlashStorage;
 use khvylyna_core::Settings;
 use khvylyna_pairing::{
     ProtocolError,
@@ -16,6 +17,8 @@ use khvylyna_pairing::{
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
 
+use crate::settings_store::SettingsStore;
+
 pub const PAIRING_PORT: u16 = 80;
 
 const NO_CODE: u32 = u32::MAX;
@@ -23,6 +26,7 @@ const PAIRING_REQUEST_DEBOUNCE_MS: u32 = 500;
 
 static PENDING_SETTINGS: Mutex<RefCell<Option<Settings>>> = Mutex::new(RefCell::new(None));
 static SETTINGS_UPDATED: AtomicBool = AtomicBool::new(false);
+static CEREMONY_ACTIVE: AtomicBool = AtomicBool::new(false);
 static PAIRING_REQUESTED: AtomicBool = AtomicBool::new(false);
 static PAIRING_CODE: AtomicU32 = AtomicU32::new(NO_CODE);
 static LAST_PAIRING_REQUEST_MS: AtomicU32 = AtomicU32::new(0);
@@ -39,6 +43,12 @@ fn store_updated_settings(settings: Settings) {
         *PENDING_SETTINGS.borrow(cs).borrow_mut() = Some(settings);
     });
     SETTINGS_UPDATED.store(true, Ordering::Release);
+}
+
+/// Marks whether a ceremony is playing. Flash writes are refused meanwhile because erasing flash
+/// stalls the audio that is streamed from it.
+pub fn set_ceremony_active(active: bool) {
+    CEREMONY_ACTIVE.store(active, Ordering::Release);
 }
 
 pub fn request_pairing() {
@@ -165,20 +175,35 @@ fn negotiated_limit(hello: &[u8]) -> Result<u16, ProtocolError> {
     Ok(offer.min(protocol::DEVICE_MAX_PAYLOAD))
 }
 
-fn apply_settings(bytes: &[u8]) -> bool {
+/// Validates and durably saves received settings. Returns `true` only once they are stored in
+/// flash, so the sender is never told "accepted" for settings that would be lost on restart.
+fn apply_settings(bytes: &[u8], store: &mut SettingsStore<FlashStorage<'static>>) -> bool {
     let Some(settings) = crate::transfer::parse_settings(bytes) else {
         println!("[Pairing] Invalid settings transfer");
         return false;
     };
+    if CEREMONY_ACTIVE.load(Ordering::Acquire) {
+        println!("[Pairing] Settings refused: a ceremony is playing");
+        return false;
+    }
+    if let Err(error) = store.save(&settings) {
+        println!("[Pairing] Settings not saved: {:?}", error);
+        return false;
+    }
     println!(
-        "[Pairing] Applied settings (voice: {:?}, volume: {})",
+        "[Pairing] Saved settings (voice: {:?}, volume: {})",
         settings.announcement_voice, settings.volume
     );
     store_updated_settings(settings);
     true
 }
 
-async fn serve_peer(socket: &mut TcpSocket<'_>, window: &mut PairingWindow, rng: &mut ChaCha20Rng) {
+async fn serve_peer(
+    socket: &mut TcpSocket<'_>,
+    window: &mut PairingWindow,
+    rng: &mut ChaCha20Rng,
+    store: &mut SettingsStore<FlashStorage<'static>>,
+) {
     let hello = match read_frame(socket, 0).await {
         Ok((header, payload)) if header.kind == FrameKind::Hello => payload,
         Ok(_) => {
@@ -263,7 +288,7 @@ async fn serve_peer(socket: &mut TcpSocket<'_>, window: &mut PairingWindow, rng:
             return;
         }
     };
-    let accepted = apply_settings(&payload);
+    let accepted = apply_settings(&payload, store);
     let ack = match secret.seal_ack(accepted, rng) {
         Ok(ack) => ack,
         Err(error) => {
@@ -275,7 +300,11 @@ async fn serve_peer(socket: &mut TcpSocket<'_>, window: &mut PairingWindow, rng:
 }
 
 #[embassy_executor::task]
-pub async fn pairing_task(stack: Stack<'static>, seed: u64) {
+pub async fn pairing_task(
+    stack: Stack<'static>,
+    seed: u64,
+    mut store: SettingsStore<FlashStorage<'static>>,
+) {
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
     let mut window: Option<PairingWindow> = None;
     let mut rx_buf = [0u8; 2048];
@@ -319,7 +348,7 @@ pub async fn pairing_task(stack: Stack<'static>, seed: u64) {
         socket.set_timeout(Some(Duration::from_secs(20)));
         match socket.accept(PAIRING_PORT).await {
             Ok(()) => {
-                serve_peer(&mut socket, active, &mut rng).await;
+                serve_peer(&mut socket, active, &mut rng, &mut store).await;
                 let _ = socket.flush().await;
             }
             Err(error) => {

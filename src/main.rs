@@ -165,7 +165,7 @@ async fn main(spawner: Spawner) -> ! {
         None
     };
 
-    let (_settings_store, saved_settings) = settings_store::SettingsStore::open(
+    let (settings_store, saved_settings) = settings_store::SettingsStore::open(
         FlashStorage::new(peripherals.FLASH),
         flash_layout::SETTINGS_OFFSET,
     );
@@ -194,7 +194,7 @@ async fn main(spawner: Spawner) -> ! {
     if let Some(cfg) = stack.config_v4() {
         println!("Network ready! IP: {}", cfg.address);
         spawner.spawn(mdns_task(stack, cfg.address.address()).unwrap());
-        spawner.spawn(http_server::pairing_task(stack, pairing_seed).unwrap());
+        spawner.spawn(http_server::pairing_task(stack, pairing_seed, settings_store).unwrap());
     }
 
     sntp::synchronize_time(&stack, &rtc, settings.ntp_server.as_str()).await;
@@ -264,9 +264,11 @@ async fn main(spawner: Spawner) -> ! {
             amp_control.enable();
             Timer::after(Duration::from_millis(200)).await;
 
+            http_server::set_ceremony_active(true);
             audio_player
                 .play_ceremony(&settings, &mut sd_storage, &mut flash_cache)
                 .await;
+            http_server::set_ceremony_active(false);
 
             Timer::after(Duration::from_millis(500)).await;
             amp_control.disable();
