@@ -6,6 +6,23 @@ use khvylyna_core::{PresetBlock, Settings};
 
 use crate::flash_cache::FlashAudioCache;
 use crate::sdcard::SdCardStorage;
+use crate::wav::WavHeader;
+
+pub(crate) trait PcmSink {
+    async fn write(&mut self, chunk: &[u8], header: &WavHeader) -> Result<(), ()>;
+}
+
+#[derive(Default)]
+struct CountingSink {
+    total_samples: usize,
+}
+
+impl PcmSink for CountingSink {
+    async fn write(&mut self, chunk: &[u8], _header: &WavHeader) -> Result<(), ()> {
+        self.total_samples += chunk.len() / 2;
+        Ok(())
+    }
+}
 
 /// Amplifier enable / mute controller (active-high: GPIO 4 for relay or SD/MUTE).
 pub struct AmpControl<'d> {
@@ -109,14 +126,12 @@ impl AudioPlayer {
         // Level 1: Attempt to stream directly from MicroSD card
         if let Some(sd) = storage {
             if let Some(filename) = SdCardStorage::filename_for_block(block, settings) {
-                let mut total_samples = 0usize;
-                let stream_ok = sd.stream_file_pcm(filename, |chunk, _header| {
-                    total_samples += chunk.len() / 2;
-                });
+                let mut sink = CountingSink::default();
+                let stream_ok = sd.stream_file_pcm(filename, &mut sink).await;
                 if stream_ok {
                     println!(
-                        "[Audio] Completed streaming {} ({} samples) from SD to I2S DAC",
-                        filename, total_samples
+                        "[Audio] Read {} ({} samples) from SD",
+                        filename, sink.total_samples
                     );
                     played_audio = true;
                 }
@@ -125,13 +140,11 @@ impl AudioPlayer {
 
         // Level 2: Fallback to internal Flash audio cache partition
         if !played_audio {
-            let mut total_samples = 0usize;
-            if flash_cache.stream_block_pcm(block, |chunk, _header| {
-                total_samples += chunk.len() / 2;
-            }) {
+            let mut sink = CountingSink::default();
+            if flash_cache.stream_block_pcm(block, &mut sink).await {
                 println!(
-                    "[Audio] Completed streaming block {:?} ({} samples) from internal Flash cache",
-                    block, total_samples
+                    "[Audio] Read block {:?} ({} samples) from internal Flash cache",
+                    block, sink.total_samples
                 );
                 played_audio = true;
             }

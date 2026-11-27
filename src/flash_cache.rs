@@ -7,7 +7,7 @@ use esp_println::println;
 use esp_rom_sys::rom::spiflash::esp_rom_spiflash_read;
 use khvylyna_core::PresetBlock;
 
-use crate::wav::WavHeader;
+use crate::{audio::PcmSink, wav::WavHeader};
 
 /// Base offset of the audio_cache partition in Flash (from partitions.csv).
 pub const AUDIO_CACHE_OFFSET: u32 = 0x190000;
@@ -54,10 +54,11 @@ impl FlashAudioCache {
     }
 
     /// Streams raw PCM audio chunks for a given block from the internal Flash cache.
-    pub fn stream_block_pcm<F>(&mut self, block: &PresetBlock, mut chunk_consumer: F) -> bool
-    where
-        F: FnMut(&[u8], &WavHeader),
-    {
+    pub(crate) async fn stream_block_pcm<S: PcmSink>(
+        &mut self,
+        block: &PresetBlock,
+        sink: &mut S,
+    ) -> bool {
         let target_id = Self::block_to_id(block);
         let mut header_buf = [0u8; 16];
 
@@ -133,11 +134,13 @@ impl FlashAudioCache {
                 break;
             }
 
-            chunk_consumer(&data_buf[..to_read], &wav_header);
+            if sink.write(&data_buf[..to_read], &wav_header).await.is_err() {
+                break;
+            }
             current_offset += to_read as u32;
             bytes_left = bytes_left.saturating_sub(to_read);
         }
 
-        true
+        bytes_left == 0
     }
 }

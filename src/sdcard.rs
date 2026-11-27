@@ -9,7 +9,7 @@ use esp_println::println;
 use khvylyna_core::models::presets::{AnnouncementVoice, AnthemVoice};
 use khvylyna_core::{PresetBlock, Settings};
 
-use crate::wav::WavHeader;
+use crate::{audio::PcmSink, wav::WavHeader};
 
 /// Dummy time source for FAT filesystem operations in no_std.
 pub struct StaticTimeSource;
@@ -80,11 +80,12 @@ impl<'d> SdCardStorage<'d> {
         }
     }
 
-    /// Plays a WAV audio file directly from the SD card using a consumer callback.
-    pub fn stream_file_pcm<F>(&mut self, filename: &str, mut chunk_consumer: F) -> bool
-    where
-        F: FnMut(&[u8], &WavHeader),
-    {
+    /// Streams a WAV audio file from the SD card into a PCM sink.
+    pub(crate) async fn stream_file_pcm<S: PcmSink>(
+        &mut self,
+        filename: &str,
+        sink: &mut S,
+    ) -> bool {
         let raw_volume = match self.volume_mgr.open_raw_volume(VolumeIdx(0)) {
             Ok(v) => v,
             Err(_) => {
@@ -167,7 +168,9 @@ impl<'d> SdCardStorage<'d> {
             match self.volume_mgr.read(raw_file, &mut data_buf[..to_read]) {
                 Ok(0) => break,
                 Ok(n) => {
-                    chunk_consumer(&data_buf[..n], &header);
+                    if sink.write(&data_buf[..n], &header).await.is_err() {
+                        break;
+                    }
                     bytes_left = bytes_left.saturating_sub(n);
                 }
                 Err(_) => {
@@ -181,6 +184,6 @@ impl<'d> SdCardStorage<'d> {
         let _ = self.volume_mgr.close_dir(raw_root_dir);
         let _ = self.volume_mgr.close_volume(raw_volume);
 
-        true
+        bytes_left == 0
     }
 }
