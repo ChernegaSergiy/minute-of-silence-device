@@ -2,7 +2,7 @@
 
 use embedded_hal_bus::spi::ExclusiveDevice;
 use embedded_sdmmc::{
-    Error as SdError, File, Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager,
+    Error as SdError, Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager,
 };
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Output;
@@ -79,34 +79,6 @@ impl WavHeader {
     }
 }
 
-/// Resolves standard 8.3 FAT filenames for ceremony audio blocks based on configuration.
-pub fn filename_for_block(block: &PresetBlock, settings: &Settings) -> Option<&'static str> {
-    match block {
-        PresetBlock::Announcement => match settings.announcement_voice {
-            AnnouncementVoice::BohdanHdal => Some("ANN_HDAL.WAV"),
-            AnnouncementVoice::SoniaSotnyk => Some("ANN_SOTN.WAV"),
-            AnnouncementVoice::DaniaKhomutovskyi => Some("ANN_KHOM.WAV"),
-            AnnouncementVoice::RadioBg => Some("ANN_R_BG.WAV"),
-            AnnouncementVoice::VinnytsiaCity => Some("ANN_VINN.WAV"),
-        },
-        PresetBlock::Bell => Some("BELL.WAV"),
-        PresetBlock::Metronome => Some("METRONOM.WAV"),
-        PresetBlock::Silence => None,
-        PresetBlock::Ending => match settings.announcement_voice {
-            AnnouncementVoice::BohdanHdal => Some("END_HDAL.WAV"),
-            AnnouncementVoice::SoniaSotnyk => Some("END_SOTN.WAV"),
-            AnnouncementVoice::DaniaKhomutovskyi => Some("END_KHOM.WAV"),
-            AnnouncementVoice::RadioBg => Some("END_R_BG.WAV"),
-            AnnouncementVoice::VinnytsiaCity => None,
-        },
-        PresetBlock::Anthem => match settings.anthem_voice {
-            AnthemVoice::Default => Some("ANTHEM.WAV"),
-            AnthemVoice::MykhailoKhoma => Some("ANTH_KHO.WAV"),
-            AnthemVoice::OleksandrPonomarov => Some("ANTH_PON.WAV"),
-        },
-    }
-}
-
 /// Type alias for the SPI device wrapped with exclusive chip-select control.
 pub type SdCardDevice<'d> = ExclusiveDevice<Spi<'d, esp_hal::Blocking>, Output<'d>, Delay>;
 
@@ -122,25 +94,50 @@ impl<'d> SdCardStorage<'d> {
         println!("[SD] Probing MicroSD card...");
 
         let mut volume_mgr = VolumeManager::new(sd_card, StaticTimeSource);
-        let volume = volume_mgr
-            .open_volume(VolumeIdx(0))
+        let raw_volume = volume_mgr
+            .open_raw_volume(VolumeIdx(0))
             .map_err(|_| "Failed to open FAT volume on MicroSD card")?;
 
         println!("[SD] Volume mounted successfully. Ready for audio playback.");
-        let _ = volume;
+        let _ = volume_mgr.close_volume(raw_volume);
 
         Ok(Self { volume_mgr })
     }
 
+    /// Resolves standard 8.3 FAT filenames for ceremony audio blocks based on configuration.
+    pub fn filename_for_block(block: &PresetBlock, settings: &Settings) -> Option<&'static str> {
+        match block {
+            PresetBlock::Announcement => match settings.announcement_voice {
+                AnnouncementVoice::BohdanHdal => Some("ANN_HDAL.WAV"),
+                AnnouncementVoice::SoniaSotnyk => Some("ANN_SOTN.WAV"),
+                AnnouncementVoice::DaniaKhomutovskyi => Some("ANN_KHOM.WAV"),
+                AnnouncementVoice::RadioBg => Some("ANN_R_BG.WAV"),
+                AnnouncementVoice::VinnytsiaCity => Some("ANN_VINN.WAV"),
+            },
+            PresetBlock::Bell => Some("BELL.WAV"),
+            PresetBlock::Metronome => Some("METRONOM.WAV"),
+            PresetBlock::Silence => None,
+            PresetBlock::Ending => match settings.announcement_voice {
+                AnnouncementVoice::BohdanHdal => Some("END_HDAL.WAV"),
+                AnnouncementVoice::SoniaSotnyk => Some("END_SOTN.WAV"),
+                AnnouncementVoice::DaniaKhomutovskyi => Some("END_KHOM.WAV"),
+                AnnouncementVoice::RadioBg => Some("END_R_BG.WAV"),
+                AnnouncementVoice::VinnytsiaCity => None,
+            },
+            PresetBlock::Anthem => match settings.anthem_voice {
+                AnthemVoice::Default => Some("ANTHEM.WAV"),
+                AnthemVoice::MykhailoKhoma => Some("ANTH_KHO.WAV"),
+                AnthemVoice::OleksandrPonomarov => Some("ANTH_PON.WAV"),
+            },
+        }
+    }
+
     /// Plays a WAV audio file directly from the SD card using a consumer callback.
-    ///
-    /// The callback receives chunks of raw PCM audio data. Returns true if file was
-    /// found, parsed, and read to completion, or false on missing file / error.
     pub fn stream_file_pcm<F>(&mut self, filename: &str, mut chunk_consumer: F) -> bool
     where
         F: FnMut(&[u8], &WavHeader),
     {
-        let mut volume = match self.volume_mgr.open_volume(VolumeIdx(0)) {
+        let raw_volume = match self.volume_mgr.open_raw_volume(VolumeIdx(0)) {
             Ok(v) => v,
             Err(_) => {
                 println!("[SD] Error: Unable to open FAT volume");
@@ -148,28 +145,35 @@ impl<'d> SdCardStorage<'d> {
             }
         };
 
-        let mut root_dir = match volume.open_root_dir() {
+        let raw_root_dir = match self.volume_mgr.open_root_dir(raw_volume) {
             Ok(d) => d,
             Err(_) => {
                 println!("[SD] Error: Unable to open root directory");
-                let _ = volume.close();
+                let _ = self.volume_mgr.close_volume(raw_volume);
                 return false;
             }
         };
 
-        let mut file = match root_dir.open_file_in_dir(filename, Mode::ReadOnly) {
-            Ok(f) => f,
-            Err(_) => {
-                let _ = root_dir.close();
-                let _ = volume.close();
-                return false;
-            }
-        };
+        let raw_file =
+            match self
+                .volume_mgr
+                .open_file_in_dir(raw_root_dir, filename, Mode::ReadOnly)
+            {
+                Ok(f) => f,
+                Err(_) => {
+                    let _ = self.volume_mgr.close_dir(raw_root_dir);
+                    let _ = self.volume_mgr.close_volume(raw_volume);
+                    return false;
+                }
+            };
 
         let mut header_buf = [0u8; 44];
         let mut header_read = 0;
         while header_read < 44 {
-            match file.read(&mut header_buf[header_read..]) {
+            match self
+                .volume_mgr
+                .read(raw_file, &mut header_buf[header_read..])
+            {
                 Ok(0) => break,
                 Ok(n) => header_read += n,
                 Err(_) => break,
@@ -181,9 +185,9 @@ impl<'d> SdCardStorage<'d> {
                 "[SD] Error: {} header is too short ({} bytes)",
                 filename, header_read
             );
-            let _ = file.close();
-            let _ = root_dir.close();
-            let _ = volume.close();
+            let _ = self.volume_mgr.close_file(raw_file);
+            let _ = self.volume_mgr.close_dir(raw_root_dir);
+            let _ = self.volume_mgr.close_volume(raw_volume);
             return false;
         }
 
@@ -192,9 +196,9 @@ impl<'d> SdCardStorage<'d> {
                 "[SD] Error: {} has invalid or unsupported WAV format",
                 filename
             );
-            let _ = file.close();
-            let _ = root_dir.close();
-            let _ = volume.close();
+            let _ = self.volume_mgr.close_file(raw_file);
+            let _ = self.volume_mgr.close_dir(raw_root_dir);
+            let _ = self.volume_mgr.close_volume(raw_volume);
             return false;
         };
 
@@ -210,9 +214,9 @@ impl<'d> SdCardStorage<'d> {
         let mut data_buf = [0u8; 512];
         let mut bytes_left = header.data_length as usize;
 
-        while bytes_left > 0 && !file.is_eof() {
+        while bytes_left > 0 {
             let to_read = data_buf.len().min(bytes_left);
-            match file.read(&mut data_buf[..to_read]) {
+            match self.volume_mgr.read(raw_file, &mut data_buf[..to_read]) {
                 Ok(0) => break,
                 Ok(n) => {
                     chunk_consumer(&data_buf[..n], &header);
@@ -225,9 +229,9 @@ impl<'d> SdCardStorage<'d> {
             }
         }
 
-        let _ = file.close();
-        let _ = root_dir.close();
-        let _ = volume.close();
+        let _ = self.volume_mgr.close_file(raw_file);
+        let _ = self.volume_mgr.close_dir(raw_root_dir);
+        let _ = self.volume_mgr.close_volume(raw_volume);
 
         true
     }
