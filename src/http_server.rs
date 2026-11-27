@@ -1,6 +1,6 @@
 use alloc::{vec, vec::Vec};
 use core::cell::RefCell;
-use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use critical_section::Mutex;
 use embassy_net::Stack;
@@ -19,13 +19,13 @@ use rand_core::SeedableRng;
 pub const PAIRING_PORT: u16 = 80;
 
 const NO_CODE: u32 = u32::MAX;
-const PAIRING_REQUEST_DEBOUNCE_MS: u64 = 500;
+const PAIRING_REQUEST_DEBOUNCE_MS: u32 = 500;
 
 static PENDING_SETTINGS: Mutex<RefCell<Option<Settings>>> = Mutex::new(RefCell::new(None));
 static SETTINGS_UPDATED: AtomicBool = AtomicBool::new(false);
 static PAIRING_REQUESTED: AtomicBool = AtomicBool::new(false);
 static PAIRING_CODE: AtomicU32 = AtomicU32::new(NO_CODE);
-static LAST_PAIRING_REQUEST_MS: AtomicU64 = AtomicU64::new(0);
+static LAST_PAIRING_REQUEST_MS: AtomicU32 = AtomicU32::new(0);
 
 pub fn take_updated_settings() -> Option<Settings> {
     if !SETTINGS_UPDATED.swap(false, Ordering::AcqRel) {
@@ -42,7 +42,7 @@ fn store_updated_settings(settings: Settings) {
 }
 
 pub fn request_pairing() {
-    let now = now_ms();
+    let now = now_ms() as u32;
     let previous = LAST_PAIRING_REQUEST_MS.swap(now, Ordering::AcqRel);
     if now.saturating_sub(previous) >= PAIRING_REQUEST_DEBOUNCE_MS {
         PAIRING_REQUESTED.store(true, Ordering::Release);
