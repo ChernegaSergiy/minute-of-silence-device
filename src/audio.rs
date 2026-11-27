@@ -1,5 +1,6 @@
 use embassy_time::{Duration, Timer};
 use esp_hal::Async;
+use esp_hal::dma::DmaTxStreamBuf;
 use esp_hal::gpio::{Level, Output, OutputConfig, OutputPin};
 use esp_hal::i2s::master::I2sTx;
 use esp_println::println;
@@ -7,23 +8,12 @@ use khvylyna_core::voices::{VoiceAssets, effective_blocks};
 use khvylyna_core::{PresetBlock, Settings};
 
 use crate::flash_cache::FlashAudioCache;
+use crate::i2s_sink::I2sSink;
 use crate::sdcard::SdCardStorage;
 use crate::wav::WavHeader;
 
 pub(crate) trait PcmSink {
     async fn write(&mut self, chunk: &[u8], header: &WavHeader) -> Result<(), ()>;
-}
-
-#[derive(Default)]
-struct CountingSink {
-    total_samples: usize,
-}
-
-impl PcmSink for CountingSink {
-    async fn write(&mut self, chunk: &[u8], _header: &WavHeader) -> Result<(), ()> {
-        self.total_samples += chunk.len() / 2;
-        Ok(())
-    }
 }
 
 /// Amplifier enable / mute controller (active-high: GPIO 4 for relay or SD/MUTE).
@@ -73,12 +63,16 @@ pub fn lookup_sine(phase: u8) -> i16 {
 /// Ceremony audio player with an optional external I2S output.
 pub struct AudioPlayer<'d> {
     i2s: Option<I2sTx<'d, Async>>,
+    buffer: Option<DmaTxStreamBuf>,
 }
 
 impl<'i2s> AudioPlayer<'i2s> {
     /// Creates an audio player using the configured I2S transmitter.
-    pub const fn new(i2s: Option<I2sTx<'i2s, Async>>) -> Self {
-        Self { i2s }
+    pub const fn new(i2s: Option<I2sTx<'i2s, Async>>, buffer: DmaTxStreamBuf) -> Self {
+        Self {
+            i2s,
+            buffer: Some(buffer),
+        }
     }
 
     /// Simulates metronome ticking cadence (60 distinct 1-second cadence pulses).
@@ -103,7 +97,7 @@ impl<'i2s> AudioPlayer<'i2s> {
 
     /// Plays an individual ceremony block, streaming real WAV from SD if present, or using fallback cadence.
     pub async fn play_block<'d>(
-        &self,
+        &mut self,
         block: &PresetBlock,
         settings: &Settings,
         storage: &mut Option<SdCardStorage<'d>>,
@@ -122,27 +116,36 @@ impl<'i2s> AudioPlayer<'i2s> {
         // Level 1: Attempt to stream directly from MicroSD card
         if let Some(sd) = storage {
             if let Some(filename) = SdCardStorage::filename_for_block(block, settings) {
-                let mut sink = CountingSink::default();
+                let mut sink = I2sSink::new(&mut self.i2s, &mut self.buffer, settings.volume);
                 let stream_ok = sd.stream_file_pcm(filename, &mut sink).await;
-                if stream_ok {
-                    println!(
-                        "[Audio] Read {} ({} samples) from SD",
-                        filename, sink.total_samples
-                    );
-                    played_audio = true;
+                match sink.finish(stream_ok).await {
+                    Ok(()) => {
+                        println!("[Audio] Played {} from SD", filename);
+                        played_audio = true;
+                    }
+                    Err(true) => {
+                        println!("[Audio] I2S playback failed for {}", filename);
+                        return;
+                    }
+                    Err(false) => {}
                 }
             }
         }
 
         // Level 2: Fallback to internal Flash audio cache partition
         if !played_audio {
-            let mut sink = CountingSink::default();
-            if flash_cache.stream_block_pcm(block, &mut sink).await {
-                println!(
-                    "[Audio] Read block {:?} ({} samples) from internal Flash cache",
-                    block, sink.total_samples
-                );
-                played_audio = true;
+            let mut sink = I2sSink::new(&mut self.i2s, &mut self.buffer, settings.volume);
+            let stream_ok = flash_cache.stream_block_pcm(block, &mut sink).await;
+            match sink.finish(stream_ok).await {
+                Ok(()) => {
+                    println!("[Audio] Played block {:?} from Flash cache", block);
+                    played_audio = true;
+                }
+                Err(true) => {
+                    println!("[Audio] I2S playback failed for block {:?}", block);
+                    return;
+                }
+                Err(false) => {}
             }
         }
 
@@ -187,7 +190,7 @@ impl<'i2s> AudioPlayer<'i2s> {
 
     /// Executes the complete sequence of blocks configured in ceremony settings.
     pub async fn play_ceremony<'d>(
-        &self,
+        &mut self,
         settings: &Settings,
         storage: &mut Option<SdCardStorage<'d>>,
         flash_cache: &mut FlashAudioCache,

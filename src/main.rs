@@ -10,9 +10,11 @@ mod button;
 mod flash_cache;
 mod flash_layout;
 mod http_server;
+mod i2s_sink;
 mod led;
 mod led_pattern;
 mod mdns;
+mod pcm;
 mod scheduler;
 mod sdcard;
 mod sntp;
@@ -28,6 +30,7 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_alloc::heap_allocator;
 use esp_backtrace as _;
 use esp_hal::delay::Delay;
+use esp_hal::dma_tx_stream_buffer;
 use esp_hal::gpio::{Level, Output, OutputConfig};
 use esp_hal::i2s::master::{Channels, DataFormat, I2s, TdmConfig};
 use esp_hal::main;
@@ -200,7 +203,7 @@ async fn main(spawner: Spawner) -> ! {
             None
         }
     };
-    let audio_player = audio::AudioPlayer::new(i2s);
+    let mut audio_player = audio::AudioPlayer::new(i2s, dma_tx_stream_buffer!(8192, 512));
     let mut flash_cache = flash_cache::FlashAudioCache::new();
 
     println!("Scheduler active. Monitoring 09:00:00 trigger or GPIO 0 button press...");
