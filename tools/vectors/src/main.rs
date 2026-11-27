@@ -82,8 +82,19 @@ impl CryptoRng for FixedRng {}
 fn main() {}
 
 #[cfg(test)]
+extern crate alloc;
+
+#[cfg(test)]
 #[path = "../../../src/transfer.rs"]
 mod transfer;
+
+#[cfg(test)]
+#[path = "../../../src/settings_record.rs"]
+mod settings_record;
+
+#[cfg(test)]
+#[path = "../../../src/settings_store.rs"]
+mod settings_store;
 
 #[cfg(test)]
 #[path = "../../../src/led_pattern.rs"]
