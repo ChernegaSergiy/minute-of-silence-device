@@ -168,8 +168,9 @@ impl AudioPlayer {
                     Timer::after(Duration::from_micros(ending_dur.as_micros() as u64)).await;
                 }
                 PresetBlock::Anthem => {
-                    println!("[Audio] Fallback: Simulating state anthem block (104s)...");
-                    Timer::after(Duration::from_secs(104)).await;
+                    println!(
+                        "[Audio] Notice: Anthem audio not cached; skipping block to complete ceremony cleanly."
+                    );
                 }
             }
         }
