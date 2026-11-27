@@ -83,6 +83,7 @@ minute-of-silence-device/
 |   +-- button.rs                 # Active-low hardware button driver (GPIO 0 / BOOT)
 |   +-- led.rs                    # Status indicator LED controller (GPIO 2)
 |   +-- main.rs                   # Firmware entry point, peripherals, and event loop
+|   +-- mdns.rs                   # Multicast DNS (mDNS) responder (khvylyna.local)
 |   +-- scheduler.rs              # Daily ceremony trigger loop with compensation
 |   +-- sdcard.rs                 # MicroSD SPI driver & WAV streaming parser (FAT32)
 |   +-- sntp.rs                   # SNTP network time synchronization via embassy-net
@@ -155,6 +156,16 @@ The device looks up uncompressed 16-bit PCM WAV audio files at the root of a FAT
 | | `ANTH_PON.WAV` | Anthem performed by Oleksandr Ponomarov |
 
 If any file is absent or the card is disconnected, the firmware gracefully falls back to synthetic cadence timing without interruption.
+
+### Local Device Discovery (mDNS)
+
+Upon connecting to the local network via Wi-Fi, the device joins multicast group `224.0.0.251` and responds to standard Multicast DNS queries on UDP port 5353. It automatically resolves on the local network as:
+
+```
+http://khvylyna.local
+```
+
+This allows desktop applications, mobile devices, and diagnostic tools to discover the device and communicate with it without needing to look up dynamic DHCP IP assignments.
 
 ### Manual Testing
 
