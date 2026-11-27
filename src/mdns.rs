@@ -1,9 +1,12 @@
-//! Multicast DNS (mDNS) responder for device discovery on local networks.
+//! Multicast DNS (mDNS) and DNS-SD responder for device discovery on local networks.
 
 use embassy_net::Ipv4Address;
 
 /// Default hostname advertised over mDNS (resolves to khvylyna.local).
 pub const MDNS_HOSTNAME: &str = "khvylyna";
+
+/// DNS-SD service type advertised by Minute of Silence devices.
+pub const SERVICE_TYPE: &str = "_khvylyna._tcp.local";
 
 /// Multicast DNS standard IPv4 destination address: 224.0.0.251.
 pub const MDNS_MCAST_IPV4: Ipv4Address = Ipv4Address::new(224, 0, 0, 251);
@@ -11,15 +14,31 @@ pub const MDNS_MCAST_IPV4: Ipv4Address = Ipv4Address::new(224, 0, 0, 251);
 /// Standard mDNS UDP port: 5353.
 pub const MDNS_PORT: u16 = 5353;
 
-/// Checks if a received UDP packet contains an mDNS query for "khvylyna.local".
+/// Default HTTP server port advertised in the DNS-SD SRV record.
+pub const HTTP_PORT: u16 = 80;
+
+const HOSTNAME_WIRE: &[u8] = b"\x08khvylyna\x05local\x00";
+const SERVICE_WIRE: &[u8] = b"\x09_khvylyna\x04_tcp\x05local\x00";
+const INSTANCE_WIRE: &[u8] = b"\x08khvylyna\x09_khvylyna\x04_tcp\x05local\x00";
+const TXT_RDATA: &[u8] = b"\x0dkind=hardware\x13name=Khvylyna ESP32\x09ver=0.1.0";
+
+/// Checks if a received UDP packet contains an mDNS query for `khvylyna.local`.
 pub fn is_query_for_hostname(packet: &[u8]) -> bool {
-    // DNS header is 12 bytes; question follows
+    is_query_matching(packet, HOSTNAME_WIRE)
+}
+
+/// Checks if a received UDP packet contains a DNS-SD query for `_khvylyna._tcp.local`.
+pub fn is_query_for_service(packet: &[u8]) -> bool {
+    is_query_matching(packet, SERVICE_WIRE)
+}
+
+fn is_query_matching(packet: &[u8], target: &[u8]) -> bool {
     if packet.len() < 12 {
         return false;
     }
 
     let flags = u16::from_be_bytes([packet[2], packet[3]]);
-    // Check if QR bit (bit 15) is 0 (query)
+    // QR bit (bit 15) must be 0 for a query
     if flags & 0x8000 != 0 {
         return false;
     }
@@ -29,67 +48,90 @@ pub fn is_query_for_hostname(packet: &[u8]) -> bool {
         return false;
     }
 
-    // Search for label sequence: 8, "khvylyna", 5, "local", 0
-    let target = b"\x08khvylyna\x05local\x00";
-    packet[12..].windows(target.len()).any(|w| w == target)
+    packet[12..]
+        .windows(target.len())
+        .any(|w| w.eq_ignore_ascii_case(target))
 }
 
-/// Builds an mDNS A-record response packet for "khvylyna.local" pointing to local IPv4.
+/// Builds an mDNS A-record response packet for `khvylyna.local` pointing to `ip`.
 pub fn build_a_response(ip: Ipv4Address, buffer: &mut [u8]) -> Option<usize> {
-    if buffer.len() < 47 {
-        return None;
-    }
-
     let mut cursor = 0;
+    write_slice(
+        buffer,
+        &mut cursor,
+        &[
+            0x00, 0x00, // Transaction ID
+            0x84, 0x00, // Flags: QR=1, AA=1
+            0x00, 0x00, // QDCOUNT=0
+            0x00, 0x01, // ANCOUNT=1
+            0x00, 0x00, // NSCOUNT=0
+            0x00, 0x00, // ARCOUNT=0
+        ],
+    )?;
 
-    // Transaction ID (0 for mDNS responses)
-    buffer[cursor..cursor + 2].copy_from_slice(&[0x00, 0x00]);
-    cursor += 2;
+    write_rr(buffer, &mut cursor, HOSTNAME_WIRE, 1, 0x8001, &ip.octets())?;
+    Some(cursor)
+}
 
-    // Flags: Response (0x8400 = QR=1, AA=1, Opcode=0, RA=0, RCODE=0)
-    buffer[cursor..cursor + 2].copy_from_slice(&[0x84, 0x00]);
-    cursor += 2;
+/// Builds a DNS-SD mDNS response packet advertising `_khvylyna._tcp.local`
+/// with PTR, SRV (port 80 -> `khvylyna.local`), TXT (`kind=hardware`), and A records.
+pub fn build_dnssd_response(ip: Ipv4Address, buffer: &mut [u8]) -> Option<usize> {
+    let mut cursor = 0;
+    write_slice(
+        buffer,
+        &mut cursor,
+        &[
+            0x00, 0x00, // Transaction ID
+            0x84, 0x00, // Flags: QR=1, AA=1
+            0x00, 0x00, // QDCOUNT=0
+            0x00, 0x01, // ANCOUNT=1 (PTR)
+            0x00, 0x00, // NSCOUNT=0
+            0x00, 0x03, // ARCOUNT=3 (SRV, TXT, A)
+        ],
+    )?;
 
-    // Questions: 0
-    buffer[cursor..cursor + 2].copy_from_slice(&[0x00, 0x00]);
-    cursor += 2;
+    // PTR: _khvylyna._tcp.local -> khvylyna._khvylyna._tcp.local
+    write_rr(buffer, &mut cursor, SERVICE_WIRE, 12, 0x0001, INSTANCE_WIRE)?;
 
-    // Answer RRs: 1
-    buffer[cursor..cursor + 2].copy_from_slice(&[0x00, 0x01]);
-    cursor += 2;
+    // SRV: khvylyna._khvylyna._tcp.local -> (0, 0, HTTP_PORT, khvylyna.local)
+    let mut srv_rdata = [0u8; 6 + 16];
+    let port_bytes = HTTP_PORT.to_be_bytes();
+    srv_rdata[4] = port_bytes[0];
+    srv_rdata[5] = port_bytes[1];
+    srv_rdata[6..].copy_from_slice(HOSTNAME_WIRE);
+    write_rr(buffer, &mut cursor, INSTANCE_WIRE, 33, 0x8001, &srv_rdata)?;
 
-    // Authority RRs: 0
-    buffer[cursor..cursor + 2].copy_from_slice(&[0x00, 0x00]);
-    cursor += 2;
+    // TXT: kind=hardware, name=Khvylyna ESP32, ver=0.1.0
+    write_rr(buffer, &mut cursor, INSTANCE_WIRE, 16, 0x8001, TXT_RDATA)?;
 
-    // Additional RRs: 0
-    buffer[cursor..cursor + 2].copy_from_slice(&[0x00, 0x00]);
-    cursor += 2;
-
-    // Answer Name: \x08khvylyna\x05local\x00
-    let name = b"\x08khvylyna\x05local\x00";
-    buffer[cursor..cursor + name.len()].copy_from_slice(name);
-    cursor += name.len();
-
-    // Type: A (0x0001)
-    buffer[cursor..cursor + 2].copy_from_slice(&[0x00, 0x01]);
-    cursor += 2;
-
-    // Class: IN (0x0001) + Flush cache bit (0x8000) = 0x8001
-    buffer[cursor..cursor + 2].copy_from_slice(&[0x80, 0x01]);
-    cursor += 2;
-
-    // TTL: 120 seconds (0x00000078)
-    buffer[cursor..cursor + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x78]);
-    cursor += 4;
-
-    // Data Length: 4 bytes (IPv4)
-    buffer[cursor..cursor + 2].copy_from_slice(&[0x00, 0x04]);
-    cursor += 2;
-
-    // IPv4 Address data
-    buffer[cursor..cursor + 4].copy_from_slice(&ip.octets());
-    cursor += 4;
+    // A: khvylyna.local -> IPv4
+    write_rr(buffer, &mut cursor, HOSTNAME_WIRE, 1, 0x8001, &ip.octets())?;
 
     Some(cursor)
+}
+
+fn write_rr(
+    buffer: &mut [u8],
+    cursor: &mut usize,
+    name_wire: &[u8],
+    rtype: u16,
+    rclass: u16,
+    rdata: &[u8],
+) -> Option<()> {
+    write_slice(buffer, cursor, name_wire)?;
+    write_slice(buffer, cursor, &rtype.to_be_bytes())?;
+    write_slice(buffer, cursor, &rclass.to_be_bytes())?;
+    write_slice(buffer, cursor, &120u32.to_be_bytes())?;
+    write_slice(buffer, cursor, &(rdata.len() as u16).to_be_bytes())?;
+    write_slice(buffer, cursor, rdata)
+}
+
+fn write_slice(buffer: &mut [u8], cursor: &mut usize, data: &[u8]) -> Option<()> {
+    let end = cursor.checked_add(data.len())?;
+    if end > buffer.len() {
+        return None;
+    }
+    buffer[*cursor..end].copy_from_slice(data);
+    *cursor = end;
+    Some(())
 }
