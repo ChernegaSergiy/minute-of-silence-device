@@ -94,6 +94,10 @@ mod led_pattern;
 mod pcm;
 
 #[cfg(test)]
+#[path = "../../../src/wav.rs"]
+mod wav;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

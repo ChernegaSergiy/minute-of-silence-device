@@ -16,6 +16,7 @@ mod scheduler;
 mod sdcard;
 mod sntp;
 mod transfer;
+mod wav;
 mod wifi;
 
 use embassy_executor::Spawner;

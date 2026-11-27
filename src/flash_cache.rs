@@ -7,7 +7,7 @@ use esp_println::println;
 use esp_rom_sys::rom::spiflash::esp_rom_spiflash_read;
 use khvylyna_core::PresetBlock;
 
-use crate::sdcard::WavHeader;
+use crate::wav::WavHeader;
 
 /// Base offset of the audio_cache partition in Flash (from partitions.csv).
 pub const AUDIO_CACHE_OFFSET: u32 = 0x190000;
