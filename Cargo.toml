@@ -21,6 +21,8 @@ embassy-time = "0.5.0"
 sntpc = { version = "0.11", default-features = false }
 sntpc-net-embassy = { version = "0.11", default-features = false }
 log = "0.4"
+embedded-sdmmc = { version = "0.8.1", default-features = false }
+embedded-hal-bus = "0.3.0"
 khvylyna-core = { git = "https://github.com/ChernegaSergiy/minute-of-silence", default-features = false, features = ["alloc"] }
 
 [profile.dev]
