@@ -1,7 +1,31 @@
 //! MicroSD card reader driver and WAV stream parser.
 
+use embedded_hal_bus::spi::ExclusiveDevice;
+use embedded_sdmmc::{
+    Error as SdError, File, Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager,
+};
+use esp_hal::delay::Delay;
+use esp_hal::gpio::Output;
+use esp_hal::spi::master::Spi;
+use esp_println::println;
 use khvylyna_core::models::presets::{AnnouncementVoice, AnthemVoice};
 use khvylyna_core::{PresetBlock, Settings};
+
+/// Dummy time source for FAT filesystem operations in no_std.
+pub struct StaticTimeSource;
+
+impl TimeSource for StaticTimeSource {
+    fn get_timestamp(&self) -> Timestamp {
+        Timestamp::from_calendar(2026, 1, 1, 0, 0, 0).unwrap_or(Timestamp {
+            year_since_1970: 56,
+            zero_indexed_month: 0,
+            zero_indexed_day: 0,
+            hours: 0,
+            minutes: 0,
+            seconds: 0,
+        })
+    }
+}
 
 /// Metadata parsed from standard RIFF/WAVE audio headers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,5 +104,31 @@ pub fn filename_for_block(block: &PresetBlock, settings: &Settings) -> Option<&'
             AnthemVoice::MykhailoKhoma => Some("ANTH_KHO.WAV"),
             AnthemVoice::OleksandrPonomarov => Some("ANTH_PON.WAV"),
         },
+    }
+}
+
+/// Type alias for the SPI device wrapped with exclusive chip-select control.
+pub type SdCardDevice<'d> = ExclusiveDevice<Spi<'d, esp_hal::Blocking>, Output<'d>, Delay>;
+
+/// MicroSD card filesystem manager.
+pub struct SdCardStorage<'d> {
+    volume_mgr: VolumeManager<SdCard<SdCardDevice<'d>, Delay>, StaticTimeSource>,
+}
+
+impl<'d> SdCardStorage<'d> {
+    /// Initializes SD card and mounts the first FAT volume.
+    pub fn new(spi_device: SdCardDevice<'d>, delay: Delay) -> Result<Self, &'static str> {
+        let sd_card = SdCard::new(spi_device, delay);
+        println!("[SD] Probing MicroSD card...");
+
+        let mut volume_mgr = VolumeManager::new(sd_card, StaticTimeSource);
+        let volume = volume_mgr
+            .open_volume(VolumeIdx(0))
+            .map_err(|_| "Failed to open FAT volume on MicroSD card")?;
+
+        println!("[SD] Volume mounted successfully. Ready for audio playback.");
+        let _ = volume;
+
+        Ok(Self { volume_mgr })
     }
 }
