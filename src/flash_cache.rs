@@ -80,18 +80,10 @@ impl FlashAudioCache {
             let entry_offset = AUDIO_CACHE_OFFSET + 16 + (i as u32 * 12);
             if self.storage.read(entry_offset, &mut entry_buf).is_ok() {
                 let block_id = entry_buf[0];
-                let flash_offset = u32::from_le_bytes([
-                    entry_buf[4],
-                    entry_buf[5],
-                    entry_buf[6],
-                    entry_buf[7],
-                ]);
-                let length = u32::from_le_bytes([
-                    entry_buf[8],
-                    entry_buf[9],
-                    entry_buf[10],
-                    entry_buf[11],
-                ]);
+                let flash_offset =
+                    u32::from_le_bytes([entry_buf[4], entry_buf[5], entry_buf[6], entry_buf[7]]);
+                let length =
+                    u32::from_le_bytes([entry_buf[8], entry_buf[9], entry_buf[10], entry_buf[11]]);
 
                 if block_id == target_id {
                     matching_entry = Some(CachedBlockEntry {
