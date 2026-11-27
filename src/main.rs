@@ -5,6 +5,7 @@ extern crate alloc;
 
 mod audio;
 mod button;
+mod flash_cache;
 mod led;
 mod mdns;
 mod scheduler;
@@ -154,6 +155,7 @@ async fn main(spawner: Spawner) -> ! {
 
     let mut daily_scheduler = scheduler::DailyScheduler::new();
     let audio_player = audio::AudioPlayer::new(26, 25, 22);
+    let mut flash_cache = flash_cache::FlashAudioCache::new();
 
     println!("Scheduler active. Monitoring 09:00:00 trigger or GPIO 0 button press...");
 
@@ -175,7 +177,9 @@ async fn main(spawner: Spawner) -> ! {
             amp_control.enable();
             Timer::after(Duration::from_millis(200)).await;
 
-            audio_player.play_ceremony(&settings, &mut sd_storage).await;
+            audio_player
+                .play_ceremony(&settings, &mut sd_storage, &mut flash_cache)
+                .await;
 
             Timer::after(Duration::from_millis(500)).await;
             amp_control.disable();
