@@ -2,6 +2,9 @@
 
 pub const AUDIO_CACHE_OFFSET: u32 = 0x190000;
 const AUDIO_CACHE_SIZE: u32 = 0x260000;
+/// Start of the `settings` partition in `partitions.csv`.
+pub const SETTINGS_OFFSET: u32 = 0x3f0000;
+const SETTINGS_SIZE: u32 = 0x10000;
 const HEADER_SIZE: u32 = 16;
 const ENTRY_SIZE: u32 = 12;
 const MAX_ENTRIES: u16 = 8;
@@ -21,6 +24,11 @@ pub fn valid_wav_length(entry_length: u32, data_length: u32) -> bool {
         .checked_sub(WAV_HEADER_SIZE)
         .is_some_and(|capacity| data_length <= capacity)
 }
+
+const _: () = assert!(
+    crate::settings_record::SLOT_SIZE * crate::settings_record::SLOT_COUNT as u32 <= SETTINGS_SIZE
+);
+const _: () = assert!(AUDIO_CACHE_OFFSET + AUDIO_CACHE_SIZE <= SETTINGS_OFFSET);
 
 #[cfg(test)]
 mod tests {
