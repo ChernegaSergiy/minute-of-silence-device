@@ -18,6 +18,7 @@ mod mdns;
 mod pcm;
 mod scheduler;
 mod sdcard;
+mod settings_record;
 mod sntp;
 mod transfer;
 mod wav;
