@@ -2,6 +2,23 @@
 
 # Minute of Silence Device
 
+> [!IMPORTANT]
+> **Project Archived**
+>
+> This repository is archived and no longer maintained. The firmware is a proof of concept: its audio output has never been verified with a DAC, an amplifier and a speaker, so it should not be relied on for real ceremonies.
+>
+> **Why this project exists**
+>
+> -   It grew out of the [Minute of Silence](https://github.com/ChernegaSergiy/minute-of-silence) desktop app. After adding settings export/import and local-network settings transfer, I wanted to build firmware for an ESP32-class microcontroller that could be configured from the app and behave the same way as it does.
+> -   The goal was an affordable solution for village councils and schools, sold at the cost of its components rather than at a commercial markup. Commercial air-raid alert units on the market are listed at roughly UAH 4,000-9,500 (for example, an audio module at UAH 8,499). With a feature such as air-raid alerts, the most expensive parts of this device would have been the amplifier with a loudspeaker and a roaming provider's subscription.
+>
+> **Why it is archived**
+>
+> -   Finishing the project would require an audio chain (a DAC, an amplifier and a speaker) purely for debugging. Buying it for a project with uncertain prospects was not justified, and without it I can't test or debug audio output. I'm not willing to keep building on firmware I can't verify.
+> -   When I drew up a bill of materials, it became clear that the savings over existing commercial solutions would be small. Given that, I decided not to leave the project half-finished.
+>
+> The code stays available as a reference. If you have the hardware and the time to take this further, you are welcome to fork it under the terms of the license.
+
 [![CI](https://github.com/ChernegaSergiy/minute-of-silence-device/actions/workflows/ci.yml/badge.svg)](https://github.com/ChernegaSergiy/minute-of-silence-device/actions)
 [![License: CSSM Unlimited License v2.0](https://img.shields.io/badge/License-CSSM%20Unlimited%20License%20v2.0-blue.svg?logo=opensourceinitiative)](LICENSE)
 
